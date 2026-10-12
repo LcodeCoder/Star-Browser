@@ -52,7 +52,7 @@ class AutomationTasks{
  async wait(item,ms){const limit=Date.now()+ms;while(Date.now()<limit){this.check(item);await new Promise(resolve=>setTimeout(resolve,Math.min(80,limit-Date.now())));}}
  async guest(item,timeout=15000){
   const deadline=Date.now()+timeout;while(Date.now()<deadline){this.check(item);const profileId=item.run.profileId,window=BrowserWindow.getAllWindows().find(w=>!w._starClosing&&!w.isDestroyed()&&w._profile?.id===profileId);if(!window)throw new Error('任务浏览器窗口已关闭');const selected=this.synchronizer.activeGuest(profileId),guest=selected?.wc;
-   if(guest&&!guest.isDestroyed()&&!guest.isLoading()){item.guestId||=guest.id;return guest;}await this.wait(item,60);
+   if(guest&&!guest.isDestroyed()&&!guest.isLoading()&&guest.__starDocumentReady){item.guestId||=guest.id;return guest;}await this.wait(item,60);
   }throw new Error('页面加载超时，请检查网络或代理');
  }
  async evaluate(wc,expression){if(!wc.debugger.isAttached())wc.debugger.attach('1.3');const result=await wc.debugger.sendCommand('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,timeout:3000});if(result.exceptionDetails)throw new Error('网页操作失败，请检查元素定位');return result.result?.value;}

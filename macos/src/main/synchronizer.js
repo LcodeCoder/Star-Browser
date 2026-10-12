@@ -21,7 +21,7 @@ class Synchronizer extends EventEmitter{
   if(this.session)throw new Error('请先停止当前同步');
   if(!Array.isArray(followers)||followers.length<1||followers.length>9||new Set([master,...followers]).size!==followers.length+1)throw new Error('同步需要 2–10 个不同环境');
   for(const id of [master,...followers]){
-   if(!this.store.get(id)||!this.window(id)||!this.activeGuest(id))throw new Error('请先启动所选环境的内置浏览器，并等待页面就绪');
+   if(!this.store.get(id)||!this.window(id)||!this.activeGuest(id)?.wc.__starDocumentReady||this.activeGuest(id).wc.isLoading())throw new Error('请先启动所选环境的内置浏览器，并等待页面就绪');
    require('./profile-backups').assertProfileUnlocked(id);
   }
   this.generation++;this.session={active:true,paused:false,master,followers:[...followers],navigation:!!navigation,startedAt:Date.now(),error:''};this.changed();
@@ -60,7 +60,7 @@ class Synchronizer extends EventEmitter{
   if(queue.pending>=200){this.session.paused=true;this.session.error='跟随页面响应过慢，已暂停同步。检查页面后可继续。';this.generation++;this.queues.clear();this.changed();return;}
   queue.pending++;queue.promise=queue.promise.then(async()=>{
    if(!this.session||this.session.paused||this.generation!==version)return;
-   const guest=this.activeGuest(id);if(!guest||guest.wc.isLoading())return;
+   const guest=this.activeGuest(id);if(!guest||guest.wc.isLoading()||!guest.wc.__starDocumentReady)return;
    if(!guest.wc.debugger.isAttached())guest.wc.debugger.attach('1.3');
    const values=typeof params==='function'?await params(guest):params;await guest.wc.debugger.sendCommand(method,values);
   }).catch(error=>{if(this.session&&this.generation===version){this.session.paused=true;this.session.error='跟随环境无法接收操作：'+error.message;this.generation++;this.queues.clear();this.changed();}}).finally(()=>{queue.pending--;});this.queues.set(id,queue);

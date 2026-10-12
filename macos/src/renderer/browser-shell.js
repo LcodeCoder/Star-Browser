@@ -1558,8 +1558,8 @@ async function setupGuestInjection(w, tabId) {
     if(config)await window.api.setGuestProxy(id,config.proxy||{},config.fingerprint?.language);
     await window.api.setGuestPopHandler(id);
     if(!w.isConnected)return;
-    w.__tfbGuestSet=true;w.__starReady=true;
-    if(w.__starPendingURL){const url=w.__starPendingURL;delete w.__starPendingURL;w.src=url;}
+    w.__tfbGuestSet=true;w.__starReady=true;StarTabs.ready(w,tabId);
+    if(w.__starPendingURL){const url=w.__starPendingURL;delete w.__starPendingURL;w.src=url;}else await window.api.guestReady(id);
   }catch(error){
     if(w.isConnected&&activeId===tabId)showFatal("环境准备失败："+(error.message||error)+"。请重新打开此环境。");
     dbg("guest setup failed tab="+tabId+" "+(error.message||error));
@@ -1685,7 +1685,7 @@ function updateAddrFromActive() {
   const t = activeTab();
   if (!t) return;
   try {
-    if (document.activeElement !== addr) addr.value = t.ntp ? "" : t.web.getURL();
+    if (document.activeElement !== addr) addr.value = t.ntp ? "" : t.web.__starPendingURL || (t.web.getURL()==="about:blank"?t.url:t.web.getURL());
   } catch (e) {}
   updateNavButtons();
 }
@@ -1716,9 +1716,9 @@ function refreshTitle(tabId) {
 
 // 重建所有标签（用当前 profile 的最新指纹重新注入，应用新的时区/语言等）
 function rebuildAllTabs() {
-  const urls=tabs.map(t=>({url:t.ntp?'about:home':t.url||homeUrl,ntp:t.ntp})),index=tabs.findIndex(t=>t.id===activeId);
-  StarBrowser.beginRestore();tabs.forEach(t=>t.web.remove());tabs.length=0;
-  urls.forEach(t=>createTab(t.url,{ntp:t.ntp}));if(tabs.length)activateTab(tabs[Math.max(0,index)].id);StarBrowser.endRestore();
+  const urls=tabs.map(t=>({url:t.ntp?'about:home':t.url||homeUrl,ntp:t.ntp,pinned:t.pinned,muted:t.muted,sleeping:t.sleeping,title:t.title})),index=tabs.findIndex(t=>t.id===activeId);
+  StarBrowser.beginRestore();tabs.forEach(t=>t.web?.remove());tabs.length=0;
+  urls.forEach(t=>createTab(t.url,{...t,background:true}));if(tabs.length)activateTab(tabs[Math.max(0,index)].id);StarBrowser.endRestore();
 }
 
 // ---------------- 标签管理 ----------------
@@ -1742,13 +1742,16 @@ function renderTabs() {
       e.stopPropagation();
       closeTab(t.id);
     });
+    StarTabs.decorate(t,el);
     tabsEl.appendChild(el);
   });
 }
 
 function activateTab(id) {
   activeId = id;
+  const selected=tabs.find(t=>t.id===id);if(selected)StarTabs.wake(selected);
   tabs.forEach((t) => {
+    if(!t.web)return;
     if (t.id === id) {
       t.web.classList.add("active");
       t.web.style.display = "flex";
@@ -1773,17 +1776,21 @@ function activateTab(id) {
 
 function createTab(url, opts) {
   opts = opts || {};
+  if(tabs.length>=50){toast("每个窗口最多打开 50 个标签");return null;}
   if(url===homeUrl || url==="about:home")opts.ntp=true;
   const id = nextId++;
-  const w = makeWebview(id);
-  wrap.appendChild(w);
-  const tab = { id, title: "新标签", web: w, url: "", ntp: !!opts.ntp };
-  tabs.push(tab);
-  activateTab(id); // 先激活（显示）
+  const sleeping=!!opts.sleeping&&!opts.ntp&&!!opts.background;
+  const w=sleeping?null:makeWebview(id);
+  if(w)wrap.appendChild(w);
+  const tab={id,title:opts.title||"新标签",web:w,url:url||"about:home",ntp:!!opts.ntp,pinned:!!opts.pinned,muted:!!opts.muted,sleeping};
+  const boundary=tabs.findIndex(t=>!t.pinned);
+  if(tab.pinned&&boundary>=0)tabs.splice(boundary,0,tab);else tabs.push(tab);
+  if(!opts.background)activateTab(id);
   renderTabs();
+  if(sleeping){StarBrowser.persist();return id;}
   if (opts.ntp) {
     w.src="about:blank"; StarBrowser.persist();
-  } else go(url || homeUrl); // 再导航
+  } else {w.__starPendingURL=url||homeUrl;if(w.__starReady){delete w.__starPendingURL;w.src=url||homeUrl;}else setupGuestInjection(w,id);}
   return id;
 }
 
@@ -1793,7 +1800,7 @@ function closeTab(id) {
   const wasActive = activeId === id;
   StarBrowser.tabClosed(tabs[idx]);
   try {
-    tabs[idx].web.remove();
+    tabs[idx].web?.remove();
   } catch (e) {}
   tabs.splice(idx, 1);
   if (tabs.length === 0) {
@@ -1927,7 +1934,7 @@ if (window.api) {
       StarBrowser.beginRestore();
       tabs.forEach(t=>t.web.remove());tabs.length = 0;
       const saved=Array.isArray(payload.savedTabs)?payload.savedTabs:[];
-      if(saved.length){saved.forEach(t=>createTab(t.url,{ntp:t.url==='about:home'}));activateTab(tabs[Math.min(payload.savedActive||0,tabs.length-1)].id);}
+      if(saved.length){saved.forEach(t=>createTab(t.url,{...t,ntp:t.url==='about:home',background:true}));activateTab(tabs[Math.min(payload.savedActive||0,tabs.length-1)].id);}
       else createTab(payload.startUrl || homeUrl);
       StarBrowser.endRestore();
       // 默认同时打开检测站，便于一眼确认 IP 环境是否正常（参考 AdsPower：开环境即带检测页）

@@ -210,3 +210,10 @@ test('指纹策略、屏幕校验与导入保持明确设置，原生信号不�
  const saved=validateProfile(input,true);assert.deepEqual(importProfiles([input])[0].fingerprint,saved.fingerprint);assert.throws(()=>validateProfile({fingerprint:{screen:{width:1600}}}),/屏幕/);assert.throws(()=>validateProfile({fingerprint:{noise:{canvas:'false'}}}),/策略/);
  const fp=generateFingerprint('settings-consistency',saved);assert.equal(fp.noise.canvas,false);assert.equal(fp.noise.audio,true);assert.equal(fp.screen.width,1600);for(const key of ['audioSampleRate','fonts','mediaDevices','speechVoices','plugins'])assert.equal(fp[key],undefined);
 });
+
+
+test('标签会话保留固定、静音和休眠，旧数据仍可读取且配置复制不带会话',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-tab-metadata-'));
+ try{const store=new Store(dir),profile=store.create({name:'Tab metadata'});store.sessionTabs(profile.id,[{url:'https://example.test/one',title:'One',pinned:true,muted:true,sleeping:true},{url:'about:home',title:'Home'}],1);const restored=new Store(dir).get(profile.id);assert.deepEqual(restored.sessionTabs[0],{url:'https://example.test/one',title:'One',pinned:true,muted:true,sleeping:true});assert.equal(restored.sessionTabs[1].pinned,false);assert.equal(restored.sessionActive,1);assert.equal(store.clone(profile.id).sessionTabs,undefined);store.flush();}
+ finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

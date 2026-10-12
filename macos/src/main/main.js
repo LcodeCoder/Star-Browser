@@ -310,6 +310,9 @@ function writeWebviewPreload(profile, fingerprint) {
     "'use strict';",
     "const CFG = " + JSON.stringify(fingerprint) + ";",
     "const { webFrame, ipcRenderer } = require('electron');",
+    "document.addEventListener('input',event=>{if(event.isTrusted)ipcRenderer.send('star:pageEdited',true);},true);",
+    "document.addEventListener('submit',event=>setTimeout(()=>{if(!event.defaultPrevented)ipcRenderer.send('star:pageEdited',false);},0),true);",
+    "document.addEventListener('reset',event=>setTimeout(()=>{if(!event.defaultPrevented)ipcRenderer.send('star:pageEdited',false);},0),true);",
     "document.addEventListener('paste',event=>{if(event.isTrusted)ipcRenderer.send('star:syncPaste',String(event.clipboardData?.getData('text/plain')||'').slice(0,1000000));},true);",
     "document.addEventListener('wheel',event=>{if(event.isTrusted&&!event.ctrlKey)ipcRenderer.send('star:syncWheel',{x:event.clientX,y:event.clientY,deltaX:event.deltaX,deltaY:event.deltaY,deltaMode:event.deltaMode});},{passive:true,capture:true});",
     "// 用 webFrame.executeJavaScript 在主世界执行，避免在 document_start 用 appendChild(<script>) 破坏页面加载（百度等会变空白）",
@@ -2578,11 +2581,15 @@ app.whenReady().then(() => {
         else if(key==="w"&&!input.shift){event.preventDefault();host.send("menu:close-tab");}
       });
       // Use Chromium's certificate validation; failed TLS stays visible in the browser.
+      wc.on("did-start-navigation",(details,_url,isInPlace,isMainFrame)=>{if((details.isMainFrame??isMainFrame)&&!(details.isSameDocument??isInPlace)){wc.__starDocumentReady=false;}});
+      wc.on("did-navigate",()=>{wc.__starPageEdited=false;});
+      wc.on("did-stop-loading",()=>{wc.__starDocumentReady=!!wc.__tfbFpInjected;});
       wc.once("dom-ready",()=>{
         const fingerprint=wc.session.__tfbFp;
         if(fingerprint)prepareGuestFingerprint(wc,fingerprint).catch(error=>dbg("GUEST-FP-READY FAIL id="+wc.id+" "+error.message));
       });
       wc.on("did-finish-load", () => {
+        wc.__starDocumentReady=!!wc.__tfbFpInjected;
         try {
           dbg("GUEST-FINISH " + (wc.getURL ? wc.getURL() : ""));
         } catch (_) {}

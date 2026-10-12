@@ -228,7 +228,7 @@ class Store extends EventEmitter {
   }
   sessionTabs(id, tabs, activeIndex) {
     const p=this.get(id); if (!p) return;
-    const saved=(Array.isArray(tabs)?tabs:[]).filter(t=>/^https?:\/\//i.test(t.url||'')||t.url==='about:home').slice(0,50).map(t=>({url:String(t.url).slice(0,4096),title:String(t.title||'').slice(0,120)}));
+    const saved=(Array.isArray(tabs)?tabs:[]).filter(t=>/^https?:\/\//i.test(t.url||'')||t.url==='about:home').slice(0,50).map(t=>({url:String(t.url).slice(0,4096),title:String(t.title||'').slice(0,120),pinned:!!t.pinned,muted:!!t.muted,sleeping:!!t.sleeping}));
     const index=Math.min(Math.max(0,Number(activeIndex)||0),Math.max(0,saved.length-1));
     if(JSON.stringify(p.sessionTabs)===JSON.stringify(saved)&&p.sessionActive===index)return;
     p.sessionTabs=saved;p.sessionActive=index;this._save();

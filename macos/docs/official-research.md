@@ -67,3 +67,11 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 - https://docs.octobrowser.net/en/profiles/browser-profile-settings/
 
 采用 CDP 原生时区和屏幕/像素比配置，保留日期/Intl 明确参数的原生行为；通过 flatten sessionId 在 Dedicated Worker 脚本执行前配置。Worker 配置有有限超时且 finally 恢复执行。当前 Electron Shared/Service Worker 无法通过此 guest 路径完整配置；Chrome Service Worker 暂停后 Runtime 求值超时，因此保留原生实现并记录真实差异，未把它算作一致能力。Octo 的分项开关用于配置工作流参考，Star 的稳定覆盖范围仍由实际测试界定。
+
+
+## 后台标签与资源管理（0.8.0）
+
+- Google Chrome 性能设置：https://support.google.com/chrome/answer/12929150?hl=en — 官方列出后台标签停用、访问时重新加载，以及媒体、下载、部分填写表单等保护情形。Star 使用手动休眠并提供真实网页对象释放和可观察状态保护，不将 Chrome 完整 Memory Saver 或内核能力列为本项目已实现。
+- Electron WebContents：https://www.electronjs.org/docs/latest/api/web-contents — close/destroyed 用于验证实际网页生命周期；文档说明 BrowserView 的 beforeunload 生命周期有特殊限制。实际内嵌 guest 测试据此采取关闭前原生监听器检查，不能仅依赖 will-prevent-unload 来保护网页。did-stop-loading 用于下载导航取消后恢复就绪。
+
+访问日期：2026-10-12。具体实现及 8 项标签专项、9 项安装包证据见 verification.md。

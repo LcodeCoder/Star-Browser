@@ -168,6 +168,44 @@ function registerWorkbench(store,{commands,starting}={}) {
   ipcMain.handle('star:historyTop',(e,id,n)=>permitted(e,id)?store.historyTop(id,n):[]);
   ipcMain.handle('star:historyClear',async(e,id)=>{if(!permitted(e,id))return false;const choice=await dialog.showMessageBox(BrowserWindow.fromWebContents(e.sender),{type:'question',title:'清除历史记录',message:'清除此环境保存的访问记录？',detail:'Cookie 和登录状态会保留。',buttons:['取消','清除记录'],defaultId:0,cancelId:0});if(choice.response!==1)return false;store.clearHistory(id);return true;});
   ipcMain.handle('star:openWorkbench',(e,page)=>{const manager=BrowserWindow.getAllWindows().find(w=>!w._profile&&!w.isDestroyed());if(!manager)return false;manager.show();manager.focus();manager.webContents.send('star:navigate',['environments','downloads','proxies','bookmarks'].includes(page)?page:'environments');return true;});
+  ipcMain.handle('star:tabSuspend',async(e,guestId)=>{
+    const {webContents}=require('electron'),wc=webContents.fromId(Number(guestId)),parent=BrowserWindow.fromWebContents(e.sender);
+    if(!wc||wc.isDestroyed()||wc.getType()!=='webview'||wc.hostWebContents!==e.sender||parent?._profile?.id!==wc.session.__tfbEnvId)throw new Error('无法休眠此标签');
+    const id=parent._profile.id;
+    const check=()=>{
+      if(wc.isDestroyed())throw new Error('标签已经关闭');
+      require('./profile-backups').assertProfileUnlocked(id);
+      const sync=synchronizer.status();if(sync.active&&[sync.master,...sync.followers].includes(id))throw new Error('请先停止窗口同步，再休眠标签');
+      if(synchronizer.activeGuest(id)?.wc.id===wc.id)throw new Error('请先切换到其他标签，再休眠此页面');
+      if(wc.isLoading()||!wc.__starDocumentReady)throw new Error('页面尚未就绪，请完成加载后再休眠');
+      if(wc.isCurrentlyAudible())throw new Error('此页面正在播放声音，请暂停后再休眠');
+      if(wc.__starPageEdited)throw new Error('页面有未提交输入，请保存或重新加载后再休眠');
+      if(store.downloads().some(row=>row.profileId===id&&['progressing','paused'].includes(row.state)))throw new Error('此环境有未完成下载，请完成后再休眠标签');
+    };
+    check();
+    const result=await wc.debugger.sendCommand('Runtime.evaluate',{expression:"(()=>{const fields=Array.from(document.querySelectorAll('input,textarea,select'));const dirty=fields.some(el=>el.tagName==='SELECT'?Array.from(el.options).some(option=>option.selected!==option.defaultSelected):['checkbox','radio'].includes(el.type)?el.checked!==el.defaultChecked:el.value!==el.defaultValue);const media=Array.from(document.querySelectorAll('audio,video')).some(el=>!el.paused&&!el.ended);return {dirty,media};})()",returnByValue:true,timeout:2000});
+    if(result.exceptionDetails||!result.result?.value)throw new Error('无法确认页面状态，请稍后重试');
+    if(result.result.value.dirty)throw new Error('页面有未提交输入，请保存或重新加载后再休眠');
+    if(result.result.value.media)throw new Error('此页面正在播放媒体，请暂停后再休眠');
+    // Embedded guest close does not reliably cancel after will-prevent-unload.
+    // Inspect native listeners before closing, and leave pages requesting exit confirmation intact.
+    const global=await wc.debugger.sendCommand('Runtime.evaluate',{expression:'window',returnByValue:false,timeout:2000});
+    if(!global.result?.objectId)throw new Error('无法确认页面离开状态，请稍后重试');
+    try{const {listeners}=await wc.debugger.sendCommand('DOMDebugger.getEventListeners',{objectId:global.result.objectId});if(listeners.some(listener=>listener.type==='beforeunload'))throw new Error('页面设置了离开确认，请先保存工作');}
+    finally{await wc.debugger.sendCommand('Runtime.releaseObject',{objectId:global.result.objectId}).catch(()=>{});}
+
+    check();
+    await new Promise((resolve,reject)=>{
+      const finish=(error)=>{clearTimeout(timer);wc.removeListener('destroyed',closed);wc.removeListener('will-prevent-unload',blocked);error?reject(error):resolve();};
+      const closed=()=>finish(),blocked=()=>finish(new Error('页面阻止离开，请先保存工作'));
+      const timer=setTimeout(()=>finish(new Error('页面暂时无法休眠，请稍后重试')),3000);
+      wc.once('destroyed',closed);wc.once('will-prevent-unload',blocked);
+      try{wc.close({waitForBeforeUnload:true});}catch(error){finish(error);}
+    });
+    return {ok:true};
+  });
+  ipcMain.handle('star:guestReady',(e,id)=>{const wc=require('electron').webContents.fromId(Number(id));if(!wc||wc.isDestroyed()||wc.hostWebContents!==e.sender||!wc.__tfbFpInjected)return false;if(!wc.isLoading())wc.__starDocumentReady=true;return true;});
+  ipcMain.on('star:pageEdited',(e,dirty)=>{if(e.sender.getType()==='webview')e.sender.__starPageEdited=!!dirty;});
   ipcMain.handle('star:session',(e,id,tabs,index)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile?.id!==id)return false;store.sessionTabs(id,tabs,index);return true;});
   ipcMain.handle('star:download',(e,id,action)=>{
     const item=downloadItems.get(id),record=store.downloads().find(d=>d.id===id);

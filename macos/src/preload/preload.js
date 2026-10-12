@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld("api", {
   // 指纹注入（CDP 主世界同步）：把指纹配置下发主进程，由其用 Page.addScriptToEvaluateOnNewDocument 注入
   injectFingerprint: (id, fingerprint) =>
     ipcRenderer.invoke("guest:injectFingerprint", id, fingerprint),
+  guestReady: (guestId) => ipcRenderer.invoke("star:guestReady", guestId),
+  suspendTab: (guestId) => ipcRenderer.invoke("star:tabSuspend", guestId),
   // 为主进程 setWindowOpenHandler 暴露入口：拦截弹窗，把 URL 发回渲染端开新标签
   setGuestPopHandler: (id) => ipcRenderer.invoke("guest:setPopHandler", id),
   // 清除指定 guest webview 的 Cookie/缓存（主进程经会话 session 清除，避开渲染端 webview 的 dom-ready 守卫）

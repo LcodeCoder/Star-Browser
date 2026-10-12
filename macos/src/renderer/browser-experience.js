@@ -21,9 +21,9 @@ const StarBrowser = (() => {
     $('ntpRegion').textContent = `${payload.fingerprint?.language || ''} · ${payload.fingerprint?.timezone || ''}`;
   }
   function snapshot() {
-    return tabs.map(t=>({url:t.ntp?'about:home':safeUrl(t),title:t.title||'新标签'}));
+    return tabs.map(t=>({url:t.ntp?'about:home':safeUrl(t),title:t.title||'新标签',pinned:!!t.pinned,muted:!!t.muted,sleeping:!!t.sleeping}));
   }
-  function safeUrl(t) {if(t.web.__starPendingURL)return t.web.__starPendingURL;try{return t.web.getURL()||t.url||'about:home';}catch{return t.url||'about:home';}}
+  function safeUrl(t) {if(t.web?.__starPendingURL)return t.web.__starPendingURL;try{const url=t.web.getURL();return url&&url!=='about:blank'?url:t.url||'about:home';}catch{return t.url||'about:home';}}
   function persist(immediate=false) {
     if(!profile || restoring) return;
     clearTimeout(saveTimer);
@@ -32,8 +32,8 @@ const StarBrowser = (() => {
   }
   function beginRestore(){restoring=true;}
   function endRestore(){restoring=false;persist();}
-  function tabClosed(tab) {closedTabs.push({url:tab.ntp?'about:home':safeUrl(tab),ntp:tab.ntp});if(closedTabs.length>30)closedTabs.shift();}
-  function restoreClosed() {const item=closedTabs.pop();if(item)createTab(item.url,{ntp:item.ntp});else toast('没有最近关闭的标签页');}
+  function tabClosed(tab) {closedTabs.push({url:tab.ntp?'about:home':safeUrl(tab),ntp:tab.ntp,pinned:!!tab.pinned,muted:!!tab.muted,title:tab.title});if(closedTabs.length>30)closedTabs.shift();}
+  function restoreClosed() {const item=closedTabs.pop();if(item)createTab(item.url,item);else toast('没有最近关闭的标签页');}
   function normalize(value) {
     const q=String(value||'').trim(); if(!q)return 'about:home';
     if(q==='about:blank'||q==='about:home')return q;
@@ -45,7 +45,8 @@ const StarBrowser = (() => {
   function navigate(value) {try{const url=normalize(value);if(url==='about:home'){showNtp();persist();}else go(url);}catch(error){toast(error.message);}}
   async function settled(tabId,w) {
     const t=tabs.find(t=>t.id===tabId);if(!t)return;
-    let url='';try{url=w.getURL();t.url=url;}catch{}
+    if(w.__starPendingURL||(!w.__starReady&&profile?.fingerprint))return;
+    let url='';try{url=w.getURL();if(url==='about:blank'&&!t.ntp&&/^https?:/.test(t.url))return;t.url=url;}catch{}
     persist();
     if(!/^https?:\/\//i.test(url))return;
     if(t.historyUrl===url&&Date.now()-(t.historyAt||0)<2000)return;
@@ -84,6 +85,7 @@ const StarBrowser = (() => {
     else if(name==='next-tab'||name==='previous-tab'){const index=tabs.findIndex(t=>t.id===activeId);activateTab(tabs[(index+(name==='next-tab'?1:-1)+tabs.length)%tabs.length].id);}
   }
   function setup() {
+    StarTabs.setup();
     $('historyBtn').onclick=()=>togglePanel('historyPanel');$('historyClose').onclick=()=>$('historyPanel').hidden=true;
     $('historySearch').oninput=renderHistory;$('historyClear').onclick=async()=>{try{if(await window.api.historyClear(profile.id))loadHistory();}catch(error){toast(error.message);}};
     $('tabSearchBtn').onclick=()=>togglePanel('tabSearchPanel');$('tabSearchClose').onclick=()=>$('tabSearchPanel').hidden=true;$('tabSearchInput').oninput=renderTabSearch;
@@ -93,7 +95,7 @@ const StarBrowser = (() => {
     $('themeToggle').onclick=async()=>{preferences.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';theme();await window.api.preferences({theme:preferences.theme});};
     $('findInput').oninput=()=>find();$('findInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();find(!e.shiftKey,true);}else if(e.key==='Escape')closeFind();};
     $('findPrev').onclick=()=>find(false,true);$('findNext').onclick=()=>find(true,true);$('findClose').onclick=closeFind;
-    $('fatalRetry').onclick=()=>{hideFatal();try{activeTab()?.web.reload();}catch{}};$('fatalClose').onclick=hideFatal;
+    $('fatalRetry').onclick=()=>{hideFatal();const t=activeTab();if(t?.web&&!t.web.__starReady){setupGuestInjection(t.web,t.id);}else try{t?.web.reload();}catch{}};$('fatalClose').onclick=hideFatal;
     document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(mod&&['f','l','y','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu'])$(id).hidden=true;}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
     document.addEventListener('pointerdown',e=>{for(const [id,trigger] of [['browserMenu','browserMenuBtn'],['tabSearchPanel','tabSearchBtn'],['historyPanel','historyBtn']])if(!$(id).hidden&&!$(id).contains(e.target)&&!$(trigger).contains(e.target))$(id).hidden=true;});
     window.addEventListener('beforeunload',()=>{if(profile)window.api.saveSessionNow(profile.id,snapshot(),tabs.findIndex(t=>t.id===activeId));});

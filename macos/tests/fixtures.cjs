@@ -26,6 +26,10 @@ async function startOrigin() {
   const requests = [];
   const fixture = await listen(http.createServer((req, res) => {
     requests.push({url: req.url, headers: req.headers});
+    if(req.url.startsWith('/silence.wav')){
+      const bytes=32000,sound=Buffer.alloc(44+bytes,128);sound.write('RIFF',0);sound.writeUInt32LE(36+bytes,4);sound.write('WAVEfmt ',8);sound.writeUInt32LE(16,16);sound.writeUInt16LE(1,20);sound.writeUInt16LE(1,22);sound.writeUInt32LE(8000,24);sound.writeUInt32LE(8000,28);sound.writeUInt16LE(1,32);sound.writeUInt16LE(8,34);sound.write('data',36);sound.writeUInt32LE(bytes,40);
+      res.writeHead(200,{'Content-Type':'audio/wav','Content-Length':sound.length});res.end(sound);return;
+    }
     if(req.url.startsWith('/fingerprint-worker.js')){
       res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Service-Worker-Allowed':'/'});
       res.end(`const read=()=>({ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,tz:new Intl.DateTimeFormat().resolvedOptions().timeZone,offset:new Date('2026-01-15T12:00:00Z').getTimezoneOffset()});if(typeof ServiceWorkerGlobalScope!=='undefined'&&self instanceof ServiceWorkerGlobalScope){self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));self.addEventListener('message',event=>event.ports[0].postMessage(read()));}else if(typeof SharedWorkerGlobalScope!=='undefined'&&self instanceof SharedWorkerGlobalScope){self.onconnect=event=>event.ports[0].postMessage(read());}else postMessage(read());`);return;

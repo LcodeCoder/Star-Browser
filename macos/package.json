@@ -1,6 +1,6 @@
 {
   "name": "star-browser",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
@@ -24,7 +24,8 @@
     "test:backups": "node tests/backups.cjs",
     "test:sync": "node tests/synchronizer.cjs",
     "test:tasks": "node tests/tasks.cjs",
-    "test:fingerprint": "node tests/fingerprint.cjs"
+    "test:fingerprint": "node tests/fingerprint.cjs",
+    "test:tabs": "node tests/browser-tabs.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
