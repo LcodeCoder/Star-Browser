@@ -71,6 +71,7 @@ lucide-react/dist/esm/icons/archive-restore.mjs:
 lucide-react/dist/esm/icons/archive.mjs:
 lucide-react/dist/esm/icons/arrow-down-to-line.mjs:
 lucide-react/dist/esm/icons/arrow-up-right.mjs:
+lucide-react/dist/esm/icons/book-open.mjs:
 lucide-react/dist/esm/icons/bookmark.mjs:
 lucide-react/dist/esm/icons/chevron-down.mjs:
 lucide-react/dist/esm/icons/chevron-right.mjs:
@@ -85,6 +86,7 @@ lucide-react/dist/esm/icons/ellipsis.mjs:
 lucide-react/dist/esm/icons/external-link.mjs:
 lucide-react/dist/esm/icons/fingerprint-pattern.mjs:
 lucide-react/dist/esm/icons/folder-open.mjs:
+lucide-react/dist/esm/icons/key-round.mjs:
 lucide-react/dist/esm/icons/layers.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/monitor.mjs:
@@ -96,6 +98,7 @@ lucide-react/dist/esm/icons/pin.mjs:
 lucide-react/dist/esm/icons/pin-off.mjs:
 lucide-react/dist/esm/icons/play.mjs:
 lucide-react/dist/esm/icons/plus.mjs:
+lucide-react/dist/esm/icons/puzzle.mjs:
 lucide-react/dist/esm/icons/refresh-cw.mjs:
 lucide-react/dist/esm/icons/rotate-ccw-clock.mjs:
 lucide-react/dist/esm/icons/search.mjs:

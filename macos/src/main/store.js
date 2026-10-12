@@ -26,6 +26,7 @@ class Store extends EventEmitter {
     this._load();
     this._profilesById = new Map(this._data.profiles.map(p => [p.id, p]));
     this._data.proxies ||= [];
+    this._data.extensions ||= [];
     this._data.activity ||= [];
     this._data.downloads ||= [];
     this._data.history ||= {};
@@ -140,6 +141,7 @@ class Store extends EventEmitter {
       archived: !!partial.archived,
       restoreSession: partial.restoreSession !== false,
       fingerprint: partial.fingerprint || {},
+      extensions: partial.extensions || [],
       permissions: partial.permissions || {},
       createdAt: now,
       updatedAt: now,
@@ -183,6 +185,13 @@ class Store extends EventEmitter {
     const original = this.get(id);
     if (!original) throw new Error("环境不存在");
     return this.create({ ...original, name: original.name + " 副本", seed: undefined, pinned: false, archived: false });
+  }
+  listExtensions() { return this._data.extensions; }
+  saveExtension(record) { this._data.extensions.push(record); this._save(); }
+  removeExtension(id) {
+    this._data.extensions=this._data.extensions.filter(e=>e.id!==id);
+    for(const p of this.list())if(p.extensions?.includes(id)){p.extensions=p.extensions.filter(value=>value!==id);p.updatedAt=Date.now();}
+    this._save();
   }
   listProxies() { return this._data.proxies; }
   saveProxy(input) {

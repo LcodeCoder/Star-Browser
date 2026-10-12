@@ -51,6 +51,16 @@ function bindProxyRequestAuthentication(request, ses) {
 let win; // 控制台（管理）窗口
 let liteWin; // 历史 Lite 单开窗口（仅在 Lite 模式下使用）
 let store;
+const profileCommands=new Map(),startupJobs=new Map();
+function registerProfileCommand(name,handler){
+  const run=(event,...args)=>{
+    if(!["browse","launch"].includes(name))return handler(event,...args);
+    const key=name+":"+args[0];if(startupJobs.has(key))return startupJobs.get(key);
+    const job=Promise.resolve().then(()=>handler(event,...args));startupJobs.set(key,job);
+    return job.finally(()=>startupJobs.delete(key));
+  };
+  profileCommands.set(name,run);ipcMain.handle("profiles:"+name,run);
+}
 let MODE; // 'lite' | 'pro' | 'changyi'，由打包时注入的 tfbMode 决定（无竞态，无需共享文件）
 
 // 指纹核心源码（一次性读取）
@@ -620,7 +630,7 @@ function createWindow() {
 
 function startPro() {
   registerIpc();
-  require("./workbench").registerWorkbench(store);
+  require("./workbench").registerWorkbench(store,{commands:(name,args)=>{const handler=profileCommands.get(name);if(!handler)throw new Error("操作不存在");return handler(null,...args);}});
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -846,19 +856,15 @@ function registerIpc() {
     extTemplateDir: path.join(__dirname, "../extension"),
   };
 
-  ipcMain.handle("profiles:list", () => store.list());
-  ipcMain.handle("profiles:create", (e, partial) => {
-    const profile = store.create(partial || {});
-    store.activity("创建环境", profile.name);
-    return profile;
+  registerProfileCommand("list", () => store.list());
+  registerProfileCommand("create", (e, partial) => {
+    return store.transaction(()=>{const profile=store.create(partial||{});store.activity("创建环境",profile.name);return profile;});
   });
-  ipcMain.handle("profiles:update", (e, id, patch) => {
-    const profile = store.update(id, patch);
-    if (profile) store.activity("更新环境", profile.name);
-    return profile;
+  registerProfileCommand("update", (e, id, patch) => {
+    return store.transaction(()=>{const profile=store.update(id,patch);if(profile)store.activity("更新环境",profile.name);return profile;});
   });
-  ipcMain.handle("profiles:remove", (e, id) => store.remove(id));
-  ipcMain.handle("profiles:preview", async (e, id) => {
+  registerProfileCommand("remove", (e, id) => store.remove(id));
+  registerProfileCommand("preview", async (e, id) => {
     const p = store.get(id);
     if (!p) return null;
     try {
@@ -876,7 +882,7 @@ function registerIpc() {
 
   // Pro：调用本机 Chrome/Edge 多开（适合对 Electron 内核敏感的高级站点）
   // 先对齐指纹（时区/语言跟随出口 IP，或用户手动指定），再传给 launcher；代理鉴权由 launcher 走本地网关处理。
-  ipcMain.handle("profiles:launch", async (e, id) => {
+  registerProfileCommand("launch", async (e, id) => {
     const p = store.get(id);
     if (!p) throw new Error("环境不存在");
     if (p.archived) throw new Error("请先恢复归档环境");
@@ -903,7 +909,7 @@ function registerIpc() {
   // Pro：应用内自带 Chromium 内核打开（装完即用，无需外机 Chrome）
   // 打开时先把指纹时区/语言对齐到出口 IP 真实地理（有代理走代理、无代理走本机直连），
   // 写入 fpCache 供首屏同步注入，根治 whoer/browserscan 的「时区/语言与 IP 不一致」。
-  ipcMain.handle("profiles:browse", async (e, id) => {
+  registerProfileCommand("browse", async (e, id) => {
     const p = store.get(id);
     if (!p) throw new Error("环境不存在");
     if (p.archived) throw new Error("请先恢复归档环境");
@@ -913,6 +919,7 @@ function registerIpc() {
     // 预创建环境分区会话（与后续 webview 同一 partition），让 geo 探测与网页加载走「同一个出口 IP」。
     // 这是根治轮换代理下「geo 时区 ≠ 检测站所见时区」(Timezone Mismatch) 的关键：探测与浏览同源同出口。
     const envSes = session.fromPartition("persist:tfb-env-" + p.id);
+    await require("./extensions").getExtensionLibrary()?.loadForSession(envSes,p);
     // 首屏即对齐出口 IP 真实地理：先拿到 geo 再生成 fp0，确保检测站在「文档开头」抢读到的第一值
     // 就是与 IP 一致的时区/语言，从根上消除系统时差（首屏用错时区、align 滞后补救仍会被抢读）。
     const hasProxy = !!(p.proxy && p.proxy.host);

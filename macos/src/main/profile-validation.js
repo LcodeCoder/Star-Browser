@@ -43,9 +43,13 @@ function validateProfile(input = {}, creating = false) {
       out.fingerprint.screen = {width,height,availWidth:width,availHeight:height-40,colorDepth:24,pixelDepth:24};
     }
   }
+  if (input.extensions !== undefined) {
+    if (!Array.isArray(input.extensions) || input.extensions.length>20 || input.extensions.some(id=>typeof id!=='string'||!/^[a-f\d-]{36}$/i.test(id))) throw new Error('每个环境最多选择 20 个有效扩展');
+    out.extensions=[...new Set(input.extensions)];
+  }
   if (input.permissions !== undefined) {
     out.permissions = {};
-    for (const key of ['geolocation','notifications','media','clipboard-read','midi','display-capture']) {
+    for (const key of ['geolocation','notifications','media','clipboard-read','midi','display-capture','local-fonts','window-management','fileSystem','local-network','loopback-network']) {
       const value=input.permissions?.[key];
       if (['ask','allow','block'].includes(value)) out.permissions[key] = value;
     }

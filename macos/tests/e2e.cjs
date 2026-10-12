@@ -123,7 +123,7 @@ async function createProfile(name,proxy=null){
    const cancelled=await until(async()=>(await api('snapshot')).downloads.find(d=>d.id!==row.id&&d.profileId===primary.id));
    await until(async()=>{await manager.evaluate(()=>document.querySelector('#navDownloads').click());return manager.locator('[data-download-id="'+cancelled.id+'"]');});
    await api('downloadAction',cancelled.id,'cancel');await until(async()=>(await api('snapshot')).downloads.find(d=>d.id===cancelled.id)?.state==='cancelled');
-   await manager.screenshot({path:path.join(output,'downloads.png')});await manager.locator('#navEnv').click();
+   await manager.waitForFunction(id=>document.querySelector('[data-download-id="'+id+'"]')?.textContent.includes('已取消'),cancelled.id);await manager.screenshot({path:path.join(output,'downloads.png')});await manager.locator('#navEnv').click();
   });
   await check('Cookie 和 localStorage 在不同环境之间隔离',async()=>{
    await guestEval(firstGuest,"document.cookie='sessionQA=first; path=/; max-age=3600'; localStorage.setItem('qa','first'); true");

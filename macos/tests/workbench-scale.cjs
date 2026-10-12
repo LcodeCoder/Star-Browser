@@ -34,7 +34,7 @@ async function check(name,run){const start=performance.now();const detail=await 
    await manager.locator('#search').focus();await manager.keyboard.press('Meta+k');const dialog=manager.getByRole('dialog',{name:'搜索与快速操作'});await dialog.waitFor();
    const searchStart=performance.now();await dialog.locator('[cmdk-input]').fill('环境 09999');
    const result=dialog.locator('[cmdk-item]').filter({hasText:'环境 09999'});await result.waitFor();await result.click();
-   await manager.locator('#drawer').waitFor();assert.ok((await manager.locator('#drawer').textContent()).includes('环境 09999'));await manager.screenshot({path:path.join(output,'workbench-scale.png')});
+   await manager.locator('#drawer').waitFor();assert.ok((await manager.locator('#drawer').textContent()).includes('环境 09999'));await manager.waitForFunction(()=>Number(getComputedStyle(document.querySelector('#drawer')).opacity)>.99);await manager.screenshot({path:path.join(output,'workbench-scale.png')});
    return {searchMs:Math.round(performance.now()-searchStart)};
   });
   await check('一千环境导入一次写盘并持久化',async()=>{

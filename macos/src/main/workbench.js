@@ -7,7 +7,25 @@ const {validateProfile,validateProxy,importProfiles}=require('./profile-validati
 const {getLaunchedBrowser,getLaunchedBrowsers,findChrome}=require('./launcher');
 const {parseProxyInput}=require('./proxy-parse');
 const pendingImports=new Map(), downloadItems=new Map();
-function registerWorkbench(store) {
+function registerWorkbench(store,{commands}={}) {
+  const extensions=require('./extensions').initExtensionLibrary(app.getPath('userData'),store),pendingExtensions=new Map();
+  ipcMain.handle('star:extensionPreview',async(e)=>{
+    const choice=await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender),{title:'选择已解压扩展',properties:['openDirectory']});if(choice.canceled)return {canceled:true};
+    const inspected=await require('./extensions').inspectExtension(choice.filePaths[0]),token=crypto.randomUUID();
+    pendingExtensions.set(token,{directory:inspected.root,hash:inspected.manifestHash,time:Date.now(),sender:e.sender.id});
+    return {token,...inspected.metadata};
+  });
+  ipcMain.handle('star:extensionApply',async(e,token)=>{
+    const item=pendingExtensions.get(token);pendingExtensions.delete(token);
+    if(!item||item.sender!==e.sender.id||Date.now()-item.time>10*60*1000)throw new Error('扩展预览已过期，请重新选择目录');
+    return extensions.import(item.directory,item.hash);
+  });
+  ipcMain.handle('star:extensionRemove',async(e,id)=>{
+    const assigned=new Set(store.list().filter(p=>p.extensions?.includes(id)).map(p=>p.id));
+    const loaded=BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.extensions?.includes(id))||getLaunchedBrowsers().some(([,browser])=>!browser.pipe.closed&&browser.userExtensions?.some(item=>item.id===id));
+    if(loaded||runtime().some(row=>assigned.has(row.id)))throw new Error('请先停止使用该扩展的环境，再移除');
+    await extensions.remove(id);return true;
+  });
   let invalidateTimer;
   store.on('changed',()=>{
     if(invalidateTimer)return;
@@ -30,9 +48,9 @@ function registerWorkbench(store) {
   ipcMain.handle('star:snapshot',(e,knownToken)=>{
     const running=runtime(),token=store.revision()+':'+JSON.stringify(running);
     if(knownToken===token)return {unchanged:true,token};
-    return {token,profiles:store.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
+    return {token,profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
   });
-  ipcMain.handle('star:action',async(e,action,ids=[],patch={})=>{
+  const profileAction=async(e,action,ids=[],patch={})=>{
     if(!Array.isArray(ids)||ids.length>500)throw new Error('每次最多操作 500 个环境');
     const unique=[...new Set(ids)];
     if(!unique.every(id=>store.get(id)))throw new Error('部分环境已不存在，请刷新列表');
@@ -57,6 +75,9 @@ function registerWorkbench(store) {
       if(action==='stop'){
         for(const w of BrowserWindow.getAllWindows())if(w._profile?.id===id)w.close();
         const running=getLaunchedBrowser(id);if(running&&!running.pipe.closed)await running.pipe.send('Browser.close').catch(()=>running.child.kill());
+        const deadline=Date.now()+5000;
+        while(Date.now()<deadline&&(BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.id===id)||(getLaunchedBrowser(id)&&!getLaunchedBrowser(id).pipe.closed)))await new Promise(resolve=>setTimeout(resolve,30));
+        if(BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.id===id)||(getLaunchedBrowser(id)&&!getLaunchedBrowser(id).pipe.closed))throw new Error('浏览器仍在关闭，请稍后重试');
       }else{
         const w=BrowserWindow.getAllWindows().find(w=>!w._starClosing&&w._profile?.id===id);
         if(w){if(w.isMinimized())w.restore();w.show();w.focus();}
@@ -65,7 +86,17 @@ function registerWorkbench(store) {
     }
     if(action==='stop')store.transaction(()=>{for(const id of unique)store.activity('停止浏览器',store.get(id).name);});
     return {ok:true,results:[]};
-  });
+  };
+  ipcMain.handle('star:action',profileAction);
+  const localApi=new (require('./local-api').LocalApi)(app.getPath('userData'),{store,runtime,version:app.getVersion(),commands:(name,args)=>name==='stop'?profileAction(null,'stop',[args[0]]):commands(name,args)});
+  const managerOnly=e=>{const w=BrowserWindow.fromWebContents(e.sender);if(!w||w._profile||!e.senderFrame?.url.startsWith('file:'))throw new Error('此操作需要在工作台中执行');};
+  ipcMain.handle('star:apiStatus',e=>{managerOnly(e);return localApi.status();});
+  ipcMain.handle('star:apiConfigure',async(e,patch)=>{managerOnly(e);return localApi.configure(patch);});
+  ipcMain.handle('star:apiCopyToken',e=>{managerOnly(e);clipboard.writeText(localApi.token());return true;});
+  ipcMain.handle('star:apiRotateToken',e=>{managerOnly(e);return localApi.rotateToken();});
+  ipcMain.handle('star:apiDocs',e=>{managerOnly(e);return fs.readFileSync(path.join(__dirname,'../resources/local-api.md'),'utf8');});
+  if(localApi.config.enabled)localApi.start().catch(()=>{});
+  app.on('before-quit',()=>{localApi.stop().catch(()=>{});});
   ipcMain.handle('star:export',async(e,ids=[])=>{
     const list=store.list().filter(p=>!ids.length||ids.includes(p.id));
     const result=await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender),{title:'导出环境配置',defaultPath:'Star-Browser-profiles.json',filters:[{name:'JSON',extensions:['json']}]});
@@ -133,16 +164,7 @@ function registerWorkbench(store) {
       item.on('updated',(event,state)=>{record.state=item.isPaused()?'paused':state;record.received=item.getReceivedBytes();record.total=item.getTotalBytes();record.path=item.getSavePath();if(Date.now()-last>800){last=Date.now();store.saveDownload({...record});}});
       item.once('done',(event,state)=>{record.state=state;record.received=item.getReceivedBytes();record.path=item.getSavePath();store.saveDownload({...record});downloadItems.delete(id);store.activity(state==='completed'?'下载完成':'下载中断',record.name);});
     });
-    ses.setPermissionCheckHandler((wc,permission)=>store.get(ses.__tfbEnvId)?.permissions?.[permission]!=='block');
-    ses.setPermissionRequestHandler(async(wc,permission,callback,details)=>{
-      const p=store.get(ses.__tfbEnvId),setting=p?.permissions?.[permission]||'ask';
-      if(setting!=='ask')return callback(setting==='allow');
-      if(process.env.TFB_TEST_MODE==='1')return callback(false);
-      const labels={geolocation:'位置信息',notifications:'通知',media:'摄像头或麦克风','clipboard-read':'读取剪贴板',midi:'MIDI 设备','display-capture':'屏幕共享'};
-      const label=labels[permission];if(!label)return callback(false);
-      let host='此网站';try{host=new URL(details.requestingUrl||wc.getURL()).host;}catch{}
-      try{const result=await dialog.showMessageBox(BrowserWindow.fromWebContents(wc),{type:'question',title:`${p?.name||'Star Browser'} · 网站权限`,message:`${host} 想访问${label}`,buttons:['拒绝','本次允许'],defaultId:0,cancelId:0});callback(result.response===1);}catch{callback(false);}
-    });
+    require('./site-permissions').bindSitePermissions(ses,store,{dialog,BrowserWindow});
   }
   app.on('session-created',bindSession);bindSession(session.defaultSession);
 }

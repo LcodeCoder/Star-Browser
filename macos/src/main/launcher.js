@@ -197,6 +197,12 @@ async function launchProfile(profile, paths, fingerprint) {
       if (!ready) await new Promise(resolve => setTimeout(resolve, 50));
     }
     if (!ready) throw new Error("指纹扩展的代理认证配置未就绪");
+    const library=require('./extensions').getExtensionLibrary();
+    running.userExtensions=[];
+    for(const item of library?.resolve(profile)||[]){
+      try{const extension=await pipe.send('Extensions.loadUnpacked',{path:item.directory});running.userExtensions.push({id:item.id,name:item.name,runtimeId:extension.id});}
+      catch(error){throw new Error('无法加载 '+item.name+'：'+error.message);}
+    }
     const { targetInfos } = await pipe.send("Target.getTargets");
     const target = targetInfos.find(target => target.type === "page");
     if (target) {

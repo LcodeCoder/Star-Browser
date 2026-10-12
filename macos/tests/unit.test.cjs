@@ -143,3 +143,15 @@ test('重启将未完成下载标记中断，已完成文件记录保持原状�
  try{const store=new Store(dir);store.saveDownload({id:'active',state:'progressing',received:10});store.saveDownload({id:'paused',state:'paused',received:20});store.saveDownload({id:'done',state:'completed',path:'/tmp/qa'});const reopened=new Store(dir);assert.deepEqual(reopened.downloads().map(d=>[d.id,d.state]),[['done','completed'],['paused','interrupted'],['active','interrupted']]);assert.equal(new Store(dir).downloads().find(d=>d.id==='active').state,'interrupted');}
  finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('扩展导入保存自有副本，缺清单或符号链接失败不会留下记录',async()=>{
+ const {ExtensionLibrary}=require('../src/main/extensions');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-extension-files-'));
+ try{
+  const source=path.join(dir,'source');fs.mkdirSync(source);const store=new Store(path.join(dir,'data')),library=new ExtensionLibrary(dir,store);
+  await assert.rejects(library.import(source),/manifest.json/);assert.equal(library.list().length,0);
+  fs.writeFileSync(path.join(source,'manifest.json'),JSON.stringify({manifest_version:3,name:'QA',version:'1.0.0'}));fs.writeFileSync(path.join(source,'content.js'),'/* QA */');
+  fs.symlinkSync('/etc/passwd',path.join(source,'linked'));await assert.rejects(library.import(source),/符号链接/);assert.equal(library.list().length,0);fs.unlinkSync(path.join(source,'linked'));
+  const record=await library.import(source);fs.rmSync(source,{recursive:true});assert.equal(fs.readFileSync(path.join(library.directory(record.id),'content.js'),'utf8'),'/* QA */');
+  const p=store.create({name:'Extension profile',extensions:[record.id]});assert.equal(library.resolve(p).length,1);await library.remove(record.id);assert.deepEqual(store.get(p.id).extensions,[]);assert.equal(fs.existsSync(library.directory(record.id)),false);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

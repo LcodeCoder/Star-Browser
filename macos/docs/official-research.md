@@ -27,3 +27,16 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 - Octo 的 /en/extensions/ 返回 404，不能作为扩展功能的可读依据；后续通过官方目录查找有效页面。
 
 抓取与失败结果保存在 test-results/privacy-performance-research.json。
+
+
+## 扩展与自动化 API 补充
+
+2026-10-13 04:05（东八区）读取官方来源：
+
+- GoLogin 扩展说明：https://support.gologin.com/en/articles/14403048-browser-extensions-overview 。扩展按环境配置，扩展设置独立；Star 的扩展库以自有副本、环境选择与实际存储隔离实现。
+- GoLogin API：https://api.gologin.com/docs 。包含环境 CRUD、批量、扩展、书签和 Cookie 资源；Star 先提供本机环境 CRUD/启动/停止/复制 API，不借用厂商云服务。
+- Octo 官方目录：https://docs.octobrowser.net/llms.txt 。成功找到 Profiles、Proxies、Teams、Fingerprint 与 Local Client API 文档入口；先前失效扩展路径不作为依据。
+- Electron 扩展支持：https://www.electronjs.org/docs/latest/api/extensions 。只支持 Chrome 扩展子集且只加载已解压扩展；每次启动需重新加载。Star 内置模式明确此边界，测试扩展已在 Electron 与本机 Chrome 实际运行。
+- Electron Session：https://www.electronjs.org/docs/latest/api/session 。权限 check/request 联合处理；请求来源用于提示，明确拒绝或允许。
+
+完整云同步和团队身份依然需要服务端，当前未提供。下一轮优先本地任务与可恢复数据工作流，不能以本地占位界面称为云服务。

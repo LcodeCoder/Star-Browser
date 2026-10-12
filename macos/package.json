@@ -1,6 +1,6 @@
 {
   "name": "star-browser",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
@@ -17,7 +17,10 @@
     "build:mac:intel": "npm run build:ui && electron-builder --mac --x64 --publish never",
     "build:ui": "node scripts/build-ui.cjs",
     "build:icon": "node scripts/build-icon.cjs",
-    "test:scale": "node tests/workbench-scale.cjs"
+    "test:scale": "node tests/workbench-scale.cjs",
+    "test:permissions": "node tests/permissions.cjs",
+    "test:extensions": "node tests/extensions.cjs",
+    "test:api": "node tests/local-api.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
