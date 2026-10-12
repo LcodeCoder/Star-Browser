@@ -49,13 +49,14 @@ function armNav(u) {
       }
     } catch (e) {}
     showFatal(
-      "页面加载超时：该网站可能在当前网络下无法访问（如 google 等被限制，建议改用 YaLaLa 或 Whoer.com）。当前地址：" +
+      "连接用时较长，请检查网络或代理后重试。当前地址：" +
         disp,
     );
   }, 30000);
 }
 function go(u) {
   hideNtp();
+  hideFatal();
   const t = activeTab();
   if (!t) return;
   try {
@@ -71,7 +72,7 @@ function go(u) {
 // ---------------- 致命错误覆盖层 ----------------
 function showFatal(msg) {
   const f = $("fatal");
-  f.textContent = "⚠ " + msg;
+  $("fatalMessage").textContent = msg;
   f.hidden = false;
   dbg("FATAL-SHOWN: " + msg);
 }
@@ -503,8 +504,7 @@ $("s-save").addEventListener("click", async () => {
     if (np) {
       profile = np;
       homeUrl = np.homeUrl || homeUrl;
-      const tag = np.buildTag ? " [" + np.buildTag + "]" : "";
-      badge.textContent = "Star Browser" + tag;
+      StarBrowser.init({...np,preferences:profile.preferences});
       rebuildAllTabs();
       panel.hidden = true;
       langEdited = false;
@@ -532,44 +532,7 @@ const launcher = $("launcher");
 // 内容结构：{ groups:[{title, items:[{name,url}]}], ads:[{name,url}] }
 // 优先取服务端 JSON（见 main.js 的 LAUNCHER_CONFIG_URL），取不到时回落下面的内置默认，
 // 保证离线可用；上线后改 JSON 即可增删站点 / 广告，无需重新发版。
-const DEFAULT_LAUNCHER = {
-  groups: [
-    {
-      title: "社媒 / 常用平台",
-      items: [
-        { name: "WhatsApp", url: "https://web.whatsapp.com" },
-        { name: "Facebook", url: "https://www.facebook.com" },
-        { name: "Instagram", url: "https://www.instagram.com" },
-        { name: "LinkedIn", url: "https://www.linkedin.com" },
-        { name: "X / Twitter", url: "https://twitter.com" },
-        { name: "TikTok", url: "https://www.tiktok.com" },
-        { name: "Pinterest", url: "https://www.pinterest.com" },
-        { name: "YouTube", url: "https://www.youtube.com" },
-        { name: "Gmail", url: "https://mail.google.com" },
-        { name: "Amazon", url: "https://www.amazon.com" },
-      ],
-    },
-    {
-      title: "检测类网站（默认 YaLaLa，whoer 为备用）",
-      items: [
-        { name: "YaLaLa ★默认", url: "https://yalala.com" },
-        { name: "Whoer.com", url: "https://whoer.com" },
-        { name: "IPchacha 指纹检测", url: "https://ipchacha.cn/fp.html" },
-        { name: "BrowserScan", url: "https://www.browserscan.net" },
-        { name: "BrowserLeaks", url: "https://browserleaks.com" },
-        { name: "IPHey", url: "https://iphey.com" },
-        { name: "DNSLeakTest", url: "https://dnsleaktest.com" },
-        { name: "CoverYourTracks", url: "https://coverage.eff.org" },
-        { name: "WhatIsMyBrowser", url: "https://www.whatismybrowser.com" },
-        { name: "IP-API", url: "https://ipapi.co" },
-      ],
-    },
-  ],
-  ads: [
-    { name: "💬 咨询客服", url: "https://kf.osdwan.com" },
-    { name: "🛒 购买 IP 代理", url: "https://ispip.net" },
-  ],
-};
+const DEFAULT_LAUNCHER = {groups:[{title:"检测与工具",items:[{name:"BrowserLeaks",url:"https://browserleaks.com"},{name:"Google",url:"https://www.google.com"}]}]};
 
 function renderLauncher(cfg) {
   const body = $("launcher-body");
@@ -662,16 +625,7 @@ async function loadManifest() {
     dbg("manifest error: " + (e.message || e));
   }
 }
-loadManifest();
-// 每 5 分钟重新拉取一次（书签/广告/版本自动更新，无需重发版）
-setInterval(
-  () => {
-    try {
-      loadManifest();
-    } catch (_) {}
-  },
-  5 * 60 * 1000,
-);
+renderLauncher(DEFAULT_LAUNCHER);
 
 // NTP / 工作台首页广告位（读 manifest.ads，云端改 JSON 即换，无需发版）
 function renderAdsToNtp(ads) {
@@ -1402,7 +1356,7 @@ async function renderNtp() {
     bmBox.innerHTML =
       '<div class="ntp-empty">还没有收藏，点地址栏 ☆ 即可收藏常用网站</div>';
   try {
-    const visits = (await window.api.visitsTop(8)) || [];
+    const visits = profile ? (await window.api.historyTop(profile.id,8)) || [] : [];
     const vBox = $("ntpVisits");
     if (vBox) vBox.innerHTML = "";
     visits
@@ -1423,7 +1377,7 @@ async function renderNtp() {
   } catch (e) {}
 }
 function ntpTile(title, url, onClick) {
-  const tile = document.createElement("div");
+  const tile = document.createElement("button");
   tile.className = "ntp-tile";
   tile.title = url;
   const img = document.createElement("img");
@@ -1466,16 +1420,7 @@ function onPageSettled(tabId, w) {
 if ($("ntpSearch"))
   $("ntpSearch").addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
-    let q = $("ntpSearch").value.trim();
-    if (!q) return;
-    let u = q;
-    if (!/^https?:\/\//i.test(q) && !/^about:/.test(q)) {
-      u = /^[\w-]+(\.[\w-]+)+/.test(q)
-        ? "https://" + q
-        : "https://www.google.com/search?q=" + encodeURIComponent(q);
-    }
-    hideNtp();
-    go(u);
+    StarBrowser.navigate($("ntpSearch").value);
   });
 
 // ---------------- 代理出口 IP 自检 ----------------
@@ -1653,6 +1598,7 @@ function setupGuestInjection(w, tabId) {
 }
 function makeWebview(tabId) {
   const w = document.createElement("webview");
+  StarBrowser.guest(w,tabId);
   // 允许 guest 页发起新窗口（target=_blank / window.open），否则链接会被静默拦截、既不弹窗也不触发 new-window。
   // 真正「新标签页而非新窗口」的效果由下方 new-window 处理器 e.preventDefault() + createTab 实现。
   w.setAttribute("allowpopups", "");
@@ -1685,6 +1631,7 @@ function makeWebview(tabId) {
     updateNavButtons();
     refreshTitle(tabId);
     onPageSettled(tabId, w);
+    StarBrowser.settled(tabId,w);
   });
   w.addEventListener("did-stop-loading", () => {
     if (activeId === tabId) spinner.style.display = "none";
@@ -1708,7 +1655,7 @@ function makeWebview(tabId) {
     // 只对「主框架（主文档）」加载失败才弹错误页；子资源/iframe/第三方追踪像素（如 whoer.com 加载的
     // csync.loopme.me / id5-sync.com cookie-sync gif）被上游代理丢弃属正常现象，静默忽略，
     // 否则会被误报成「页面加载失败」。这类像素失败反而更隐私友好。
-    if (activeId === tabId && e.isMainFrame) {
+    if (activeId === tabId && e.isMainFrame && e.errorCode !== -3) {
       const desc = e.errorDescription || "错误码 " + e.errorCode;
       // 直连下部分检测站(如 whoer.com)被网络限制 → 连接被关闭/重置：提示改用代理，而非单纯报错
       const hint =
@@ -1737,6 +1684,7 @@ function makeWebview(tabId) {
     if (activeId === tabId) {
       updateAddrFromActive();
       refreshTitle(tabId);
+      StarBrowser.settled(tabId,w);
     }
   });
   w.addEventListener("page-title-updated", () => {
@@ -1765,7 +1713,7 @@ function updateAddrFromActive() {
   const t = activeTab();
   if (!t) return;
   try {
-    if (document.activeElement !== addr) addr.value = t.web.getURL();
+    if (document.activeElement !== addr) addr.value = t.ntp ? "" : t.web.getURL();
   } catch (e) {}
   updateNavButtons();
 }
@@ -1796,14 +1744,9 @@ function refreshTitle(tabId) {
 
 // 重建所有标签（用当前 profile 的最新指纹重新注入，应用新的时区/语言等）
 function rebuildAllTabs() {
-  const urls = tabs.map((t) => t.url || homeUrl);
-  tabs.forEach((t) => {
-    try {
-      t.web.remove();
-    } catch (e) {}
-  });
-  tabs.length = 0;
-  urls.forEach((u) => createTab(u));
+  const urls=tabs.map(t=>({url:t.ntp?'about:home':t.url||homeUrl,ntp:t.ntp})),index=tabs.findIndex(t=>t.id===activeId);
+  StarBrowser.beginRestore();tabs.forEach(t=>t.web.remove());tabs.length=0;
+  urls.forEach(t=>createTab(t.url,{ntp:t.ntp}));if(tabs.length)activateTab(tabs[Math.max(0,index)].id);StarBrowser.endRestore();
 }
 
 // ---------------- 标签管理 ----------------
@@ -1813,9 +1756,12 @@ function renderTabs() {
     const el = document.createElement("div");
     el.className = "tab" + (t.id === activeId ? " active" : "");
     el.title = t.url || t.title;
+    el.setAttribute("role","tab");el.setAttribute("aria-selected",String(t.id===activeId));el.tabIndex=t.id===activeId?0:-1;
+    el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();activateTab(t.id);}if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();StarBrowser.command(e.key==="ArrowRight"?"next-tab":"previous-tab");tabsEl.querySelector('[aria-selected="true"]')?.focus();}});
     el.innerHTML =
       '<span class="title"></span><button class="close" title="关闭标签">×</button>';
     el.querySelector(".title").textContent = t.title || "新标签";
+    el.querySelector(".close").setAttribute("aria-label","关闭 "+(t.title||"新标签"));
     el.addEventListener("click", (e) => {
       if (e.target.classList.contains("close")) return;
       activateTab(t.id);
@@ -1850,19 +1796,21 @@ function activateTab(id) {
   renderTabs();
   const t = activeTab();
   if (t) document.title = winTitle(t.title);
+  StarBrowser.tabChanged();
 }
 
 function createTab(url, opts) {
   opts = opts || {};
+  if(url===homeUrl || url==="about:home")opts.ntp=true;
   const id = nextId++;
   const w = makeWebview(id);
   wrap.appendChild(w);
-  const tab = { id, title: "新标签", web: w, url: "", ntp: false };
+  const tab = { id, title: "新标签", web: w, url: "", ntp: !!opts.ntp };
   tabs.push(tab);
   activateTab(id); // 先激活（显示）
   renderTabs();
   if (opts.ntp) {
-    /* NTP 由 activateTab 内的 showNtp 处理 */
+    w.src="about:blank"; StarBrowser.persist();
   } else go(url || homeUrl); // 再导航
   return id;
 }
@@ -1871,12 +1819,13 @@ function closeTab(id) {
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx < 0) return;
   const wasActive = activeId === id;
+  StarBrowser.tabClosed(tabs[idx]);
   try {
     tabs[idx].web.remove();
   } catch (e) {}
   tabs.splice(idx, 1);
   if (tabs.length === 0) {
-    createTab("about:blank");
+    createTab("about:blank",{ntp:true});
     return;
   }
   if (wasActive) {
@@ -1885,14 +1834,13 @@ function closeTab(id) {
   } else {
     renderTabs();
   }
+  StarBrowser.persist();
 }
 
 // ---------------- 工具栏事件 ----------------
 addr.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
-    let u = addr.value.trim();
-    if (u && !/^https?:\/\//i.test(u) && !/^about:/.test(u)) u = "https://" + u;
-    go(u || "about:blank");
+    StarBrowser.navigate(addr.value);
   }
 });
 $("back").addEventListener("click", () => {
@@ -1918,7 +1866,7 @@ $("reload").addEventListener("click", () => {
     } catch (e) {}
 });
 $("home").addEventListener("click", () => {
-  go(homeUrl);
+  showNtp();StarBrowser.persist();
 });
 $("newTab").addEventListener("click", () => {
   createTab("about:blank", { ntp: true });
@@ -1951,7 +1899,7 @@ window.addEventListener("keydown", (e) => {
     if (activeId) closeTab(activeId);
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "t") {
     e.preventDefault();
-    createTab("about:blank", { ntp: true });
+    if(e.shiftKey)StarBrowser.restoreClosed();else createTab("about:blank", { ntp: true });
   } else if (
     (e.ctrlKey || e.metaKey) &&
     e.shiftKey &&
@@ -1994,8 +1942,7 @@ if (window.api) {
           " preload=" +
           (payload.preloadURL ? "yes" : "no"),
       );
-      const tag = payload.buildTag ? " [" + payload.buildTag + "]" : "";
-      badge.textContent = "Star Browser" + tag;
+      StarBrowser.init(payload);
       $("s-version").textContent =
         payload.buildTag || (window.api.version ? window.api.version() : "");
       // 用真实配置重建当前标签（注入指纹），导航到真实起始页（不用 cur.url，那是引导时的 about:blank）
@@ -2005,8 +1952,12 @@ if (window.api) {
           cur.web.remove();
         } catch (e) {}
       }
-      tabs.length = 0;
-      createTab(payload.startUrl || homeUrl);
+      StarBrowser.beginRestore();
+      tabs.forEach(t=>t.web.remove());tabs.length = 0;
+      const saved=Array.isArray(payload.savedTabs)?payload.savedTabs:[];
+      if(saved.length){saved.forEach(t=>createTab(t.url,{ntp:t.url==='about:home'}));activateTab(tabs[Math.min(payload.savedActive||0,tabs.length-1)].id);}
+      else createTab(payload.startUrl || homeUrl);
+      StarBrowser.endRestore();
       // 默认同时打开检测站，便于一眼确认 IP 环境是否正常（参考 AdsPower：开环境即带检测页）
       try {
         if (payload.openCheckPage !== false) createTab("https://ipchacha.cn");
@@ -2070,6 +2021,7 @@ if (window.api) {
     });
   }
   bootstrap();
+  StarBrowser.setup();
 } else {
   showFatal("桥接脚本未加载(window.api 缺失)：地址栏仍可浏览。");
   bootstrap();

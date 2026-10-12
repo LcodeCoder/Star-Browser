@@ -15,7 +15,8 @@
     "verify:source": "node scripts/verify-source.cjs",
     "build:mac": "npm run build:ui && electron-builder --mac --arm64 --publish never",
     "build:mac:intel": "npm run build:ui && electron-builder --mac --x64 --publish never",
-    "build:ui": "node scripts/build-ui.cjs"
+    "build:ui": "node scripts/build-ui.cjs",
+    "build:icon": "node scripts/build-icon.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
@@ -41,7 +42,8 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "THIRD_PARTY_NOTICES.md"
     ],
     "asar": true,
     "mac": {

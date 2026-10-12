@@ -54,6 +54,7 @@ let store;
 let MODE; // 'lite' | 'pro' | 'changyi'，由打包时注入的 tfbMode 决定（无竞态，无需共享文件）
 
 // 指纹核心源码（一次性读取）
+const { applyProtocol, metadata: fingerprintMetadata } = require("./fingerprint-protocol");
 const FP_CORE_SRC = fs.readFileSync(
   path.join(__dirname, "../extension/fp-core.js"),
   "utf-8",
@@ -271,6 +272,11 @@ function resolveMode() {
 }
 
 // ---------------- 中文应用菜单（替代 Electron 默认英文菜单）----------------
+function sendBrowserCommand(command, fallback) {
+  const focused=BrowserWindow.getFocusedWindow();
+  if(focused?._profile)focused.webContents.send('star:browserCommand',command);
+  else if(focused&&fallback)fallback(focused);
+}
 function setAppMenu(mode) {
   const isPro = mode !== "lite";
   const brand = "Star Browser";
@@ -325,6 +331,7 @@ function setAppMenu(mode) {
             else focused.close();
           },
         },
+        { label: "恢复关闭的标签页", accelerator:"CmdOrCtrl+Shift+T", click:()=>sendBrowserCommand("restore-tab") },
         { label: "关闭窗口", role: "close", accelerator: "CmdOrCtrl+Shift+W" },
         { label: "退出", role: "quit" },
       ],
@@ -339,17 +346,22 @@ function setAppMenu(mode) {
         { label: "复制", role: "copy" },
         { label: "粘贴", role: "paste" },
         { label: "全选", role: "selectAll" },
+        { type:"separator" },
+        { label:"在页面中查找",accelerator:"CmdOrCtrl+F",click:()=>sendBrowserCommand("find",w=>w.webContents.send("star:browserCommand","search")) },
+        { label:"搜索或输入网址",accelerator:"CmdOrCtrl+L",click:()=>sendBrowserCommand("address") },
+        { label:"历史记录",accelerator:"CmdOrCtrl+Y",click:()=>sendBrowserCommand("history") },
+        { label:"工作台快速操作",accelerator:"CmdOrCtrl+K",click:()=>{if(win&&!win.isDestroyed()){win.show();win.focus();win.webContents.send("star:browserCommand","palette");}} },
       ],
     },
     {
       label: "视图",
       submenu: [
-        { label: "重新加载", role: "reload" },
-        { label: "强制刷新", role: "forceReload" },
+        { label: "重新加载",accelerator:"CmdOrCtrl+R",click:()=>sendBrowserCommand("reload",w=>w.webContents.reload()) },
+        { label: "强制刷新",accelerator:"CmdOrCtrl+Shift+R",click:()=>sendBrowserCommand("force-reload",w=>w.webContents.reloadIgnoringCache()) },
         { type: "separator" },
-        { label: "实际大小", role: "resetZoom" },
-        { label: "放大", role: "zoomIn" },
-        { label: "缩小", role: "zoomOut" },
+        { label: "实际大小",accelerator:"CmdOrCtrl+0",click:()=>sendBrowserCommand("zoom-reset",w=>w.webContents.setZoomFactor(1)) },
+        { label: "放大",accelerator:"CmdOrCtrl+Plus",click:()=>sendBrowserCommand("zoom-in",w=>w.webContents.setZoomFactor(Math.min(2,w.webContents.getZoomFactor()+.1))) },
+        { label: "缩小",accelerator:"CmdOrCtrl+-",click:()=>sendBrowserCommand("zoom-out",w=>w.webContents.setZoomFactor(Math.max(.5,w.webContents.getZoomFactor()-.1))) },
         { type: "separator" },
         { label: "全屏", role: "togglefullscreen" },
       ],
@@ -376,8 +388,8 @@ function setAppMenu(mode) {
               title: "关于",
               message:
                 brand +
-                " · 专为外贸人提供的免费指纹浏览器\n" +
-                (isPro ? "（兼容多开管理形态）" : "（单开轻量形态）") +
+                " · 独立浏览环境与本地工作台\n" +
+                "Chromium " + process.versions.chrome +
                 "\n构建版本：" +
                 BUILD_TAG,
               buttons: ["确定"],
@@ -427,12 +439,13 @@ function createBrowseWindow(profile, fingerprint) {
     mode: MODE,
     openCheckPage: false,
     buildTag: BUILD_TAG,
-    fingerprint,
+    fingerprint: fp,
+    preferences: store?.preferences() || {},
     proxy: profile.proxy || null,
     webrtc: profile.webrtc || "disable",
     fpSrc: FP_CORE_SRC,
     preloadURL: pathToFileURL(
-      writeWebviewPreload(profile, fingerprint),
+      writeWebviewPreload(profile, fp),
     ).toString(),
     startUrl: resolveStartUrl(profile.startUrl),
     homeUrl: HOME_URL,
@@ -443,6 +456,7 @@ function createBrowseWindow(profile, fingerprint) {
     proxy: profile.proxy || null,
   });
   browserWin._init = init;
+  browserWin.on("close",()=>{browserWin._starClosing=true;});
   dbg(
     "createBrowseWindow mode=" +
       MODE +
@@ -865,6 +879,8 @@ function registerIpc() {
   ipcMain.handle("profiles:launch", async (e, id) => {
     const p = store.get(id);
     if (!p) throw new Error("环境不存在");
+    if (p.archived) throw new Error("请先恢复归档环境");
+    if (p.proxy?.host && !(await isProxyUsable(p.proxy))) throw new Error("代理不可达，启动已阻止。请检查地址、端口和账号密码。");
     let fp;
     try {
       const r = await resolveAlignedFingerprint(p);
@@ -891,7 +907,7 @@ function registerIpc() {
     const p = store.get(id);
     if (!p) throw new Error("环境不存在");
     if (p.archived) throw new Error("请先恢复归档环境");
-    const existing = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w._profile?.id === id);
+    const existing = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && !w._starClosing && w._profile?.id === id);
     if (existing) { existing.show(); existing.focus(); return { ok: true, reused: true }; }
     if (p.proxy?.host && !(await isProxyUsable(p.proxy))) throw new Error("代理不可达，启动已阻止。请检查地址、端口和账号密码。");
     // 预创建环境分区会话（与后续 webview 同一 partition），让 geo 探测与网页加载走「同一个出口 IP」。
@@ -1123,6 +1139,9 @@ function registerIpc() {
           const L = _sess.__tfbLang || "en-US";
           const hdrs = details.requestHeaders || {};
           hdrs["Accept-Language"] = L + "," + L.split("-")[0] + ";q=0.9";
+          const fp=_sess.__tfbFp;
+          if(fp){const meta=fingerprintMetadata(fp);hdrs["User-Agent"]=fp.userAgent;for(const key of Object.keys(hdrs)){const lower=key.toLowerCase();if(lower==='sec-ch-ua')hdrs[key]=meta.brands.map(b=>`"${b.brand}";v="${b.version}"`).join(', ');if(lower==='sec-ch-ua-platform')hdrs[key]=JSON.stringify(meta.platform);if(lower==='sec-ch-ua-mobile')hdrs[key]=meta.mobile?'?1':'?0';}}
+
           callback({ requestHeaders: hdrs });
         } catch (_) {
           try {
@@ -1236,6 +1255,7 @@ function registerIpc() {
         dbg2
           .sendCommand("Page.enable")
           .catch(() => {})
+          .then(() => applyProtocol((method,params)=>dbg2.sendCommand(method,params),fingerprint))
           .then(() =>
             dbg2.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
               source: injectCode,
@@ -2567,6 +2587,14 @@ app.whenReady().then(() => {
       t = wc.getType();
     } catch (_) {}
     if (t === "webview") {
+      wc.on("before-input-event",(event,input)=>{
+        if(input.type!=="keyDown"||!(input.meta||input.control))return;
+        const key=input.key.toLowerCase(),host=wc.hostWebContents;if(!host||host.isDestroyed())return;
+        const commands={f:"find",l:"address",y:"history","+":"zoom-in","=":"zoom-in","-":"zoom-out","0":"zoom-reset"};
+        if(commands[key]){event.preventDefault();host.send("star:browserCommand",commands[key]);}
+        else if(key==="t"){event.preventDefault();host.send(input.shift?"star:browserCommand":"menu:new-tab",input.shift?"restore-tab":undefined);}
+        else if(key==="w"&&!input.shift){event.preventDefault();host.send("menu:close-tab");}
+      });
       // Use Chromium's certificate validation; failed TLS stays visible in the browser.
       // 指纹同步注入：尽早 attach 调试器，待 Page 域启用后立刻注册「文档开头脚本」，
       // 在 whoer/browserscan 等检测脚本之前、主世界、同步执行 fp-core，且使用已对齐出口 IP 地理的
@@ -2612,6 +2640,7 @@ app.whenReady().then(() => {
             _dbg
               .sendCommand("Page.enable")
               .catch(() => {})
+              .then(() => applyProtocol((method,params)=>_dbg.sendCommand(method,params),fp))
               .then(() =>
                 _dbg.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
                   source: _injectCode,

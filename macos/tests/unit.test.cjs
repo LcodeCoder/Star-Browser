@@ -80,3 +80,35 @@ test('SOCKS5 错误密码返回鉴权失败',{timeout:5000},async()=>{
   try{await assert.rejects(connectSocks5({host:'127.0.0.1',port:socks.port,user:'qa-user',pass:'bad'},'127.0.0.1',80),/鉴权失败/);}
   finally{await socks.close();}
 });
+
+test('复制环境生成新种子，不复制会话和浏览数据',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-clone-'));
+ try{const store=new Store(dir),original=store.create({name:'Source',tags:['work'],pinned:true});store.sessionTabs(original.id,[{url:'https://example.test/login',title:'Login'}],0);store.recordHistory(original.id,'https://example.test/login','Login');const copy=store.clone(original.id);assert.notEqual(copy.id,original.id);assert.notEqual(copy.seed,original.seed);assert.equal(copy.pinned,false);assert.deepEqual(copy.tags,['work']);assert.equal(copy.sessionTabs,undefined);assert.deepEqual(store.history(copy.id),[]);store.flush();}
+ finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('配置导入校验保留受支持字段，阻止 ID 覆盖和不安全起始地址',()=>{
+ const {validateProfile,importProfiles}=require('../src/main/profile-validation');
+ assert.deepEqual(validateProfile({id:'overwrite',sessionTabs:[{url:'file:///etc/passwd'}],name:' QA ',tags:['a','a','b']}),{name:'QA',tags:['a','b']});
+ assert.throws(()=>importProfiles([{name:'Bad',startUrl:'javascript:alert(1)'}]),/第 1 个环境/);
+ assert.throws(()=>validateProfile({timezone:'Not/AZone'}),/时区/);assert.throws(()=>validateProfile({fingerprint:{hardwareConcurrency:999}}),/硬件/);
+});
+test('备份恢复保留损坏文件，恢复后的写入不污染备份',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-recovery-'));
+ try{const store=new Store(dir),p=store.create({name:'Original'});store.update(p.id,{name:'Latest'});fs.writeFileSync(store.file,'{corrupt');const recovered=new Store(dir);assert.equal(recovered.get(p.id).name,'Original');recovered.update(p.id,{note:'Recovered'});assert.ok(fs.readdirSync(dir).some(n=>n.includes('.corrupt-')));assert.doesNotThrow(()=>JSON.parse(fs.readFileSync(store.file+'.bak','utf8')));assert.equal(new Store(dir).get(p.id).note,'Recovered');}
+ finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('每环境历史独立保存，URL 中的账户密码不会写入历史',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-history-'));
+ try{const store=new Store(dir),a=store.create({name:'A'}),b=store.create({name:'B'});assert.equal(store.recordHistory(a.id,'https://user:password@example.test/page','Page'),true);store.recordHistory(a.id,'file:///tmp/private','No');store.flush();assert.equal(new Store(dir).history(a.id).length,1);assert.equal(store.history(a.id)[0].url,'https://example.test/page');assert.deepEqual(store.history(b.id),[]);store.clearHistory(a.id);assert.equal(store.history(a.id).length,0);}
+ finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('标签恢复拒绝任意本地文件，保存新标签页和有效活动序号',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-session-'));
+ try{const store=new Store(dir),p=store.create({name:'Tabs'});store.sessionTabs(p.id,[{url:'file:///etc/passwd'},{url:'about:home'},{url:'https://example.test'}],99);assert.deepEqual(p.sessionTabs.map(t=>t.url),['about:home','https://example.test']);assert.equal(p.sessionActive,1);assert.equal(new Store(dir).get(p.id).sessionTabs.length,2);}
+ finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('HTTPS、IPv6 和 URL 编码凭据正确解析，未知协议不会静默降级',()=>{
+ assert.deepEqual(parseProxyInput('https://name%40company:pa%3Ass@[::1]:8443'),{type:'https',host:'::1',port:'8443',user:'name@company',pass:'pa:ss'});
+ assert.equal(buildProxyRules({type:'https',host:'::1',port:8443}),'https://[::1]:8443');
+ assert.equal(parseProxyInput('ssh://localhost:22'),null);assert.equal(parseProxyInput('localhost:65536'),null);assert.equal(parseProxyInput('http://user:%GG@localhost:80'),null);assert.equal(parseProxyInput('localhost:8080:user:pa:ss').pass,'pa:ss');
+});

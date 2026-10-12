@@ -10,9 +10,16 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { spawn } = require("child_process");
+const { spawn, execFileSync } = require("child_process");
+const { applyProtocol } = require("./fingerprint-protocol");
+const versionCache = new Map();
+function chromeVersion(chrome) {
+ const stamp=fs.statSync(chrome).mtimeMs;const cached=versionCache.get(chrome);if(cached?.stamp===stamp)return cached.version;
+ const output=execFileSync(chrome,["--version"],{encoding:"utf8",timeout:5000});const version=output.match(/\b(\d+\.\d+\.\d+\.\d+)\b/)?.[1];if(!version)throw new Error("无法读取本机 Chrome 内核版本");versionCache.set(chrome,{stamp,version});return version;
+}
 const { generateFingerprint } = require("./fingerprint");
 const { getGateway, needsGateway } = require("./local-proxy");
+const { buildProxyRules } = require("./proxy-parse");
 const { CdpPipe } = require("./cdp-pipe");
 const launchedBrowsers = new Map();
 
@@ -88,12 +95,10 @@ async function launchProfile(profile, paths, fingerprint) {
       "未找到本地 Chrome/Edge，请先安装（Pro 正式版会内置 Chromium 内核）",
     );
   }
-  const fp =
-    fingerprint ||
-    generateFingerprint(profile.seed, {
-      os: profile.os,
-      country: profile.country,
-    });
+  const version = chromeVersion(chrome);
+  const fp = generateFingerprint(profile.seed,{os:profile.os,country:profile.country,fingerprint:profile.fingerprint,chromeVersion:version,timezone:fingerprint?.timezone||profile.timezone,language:fingerprint?.language||profile.language});
+  fp.webrtc = profile.webrtc || 'disable';
+  const startUrl=profile.startUrl==='about:home'?'chrome://newtab':profile.startUrl||'about:blank';
 
   const baseDir = path.join(paths.rootDir, profile.id);
   const userDataDir = path.join(baseDir, "user-data");
@@ -128,8 +133,7 @@ async function launchProfile(profile, paths, fingerprint) {
       const port = await getGateway(profile.proxy);
       proxyArg = `http://127.0.0.1:${port}`;
     } else {
-      const scheme = profile.proxy.type === "socks5" ? "socks5" : "http";
-      proxyArg = `${scheme}://${profile.proxy.host}:${profile.proxy.port}`;
+      proxyArg = buildProxyRules(profile.proxy);
     }
     args.push(`--proxy-server=${proxyArg}`);
   }
@@ -147,7 +151,7 @@ async function launchProfile(profile, paths, fingerprint) {
 
   const existing = launchedBrowsers.get(profile.id);
   if (existing && !existing.pipe.closed) {
-    await existing.pipe.send("Target.createTarget", { url: profile.startUrl || "about:blank" });
+    await existing.pipe.send("Target.createTarget", { url: startUrl });
     return { pid: existing.child.pid, chrome, fingerprint: existing.fingerprint, userDataDir, extensionId: existing.extensionId };
   }
   args.push("about:blank");
@@ -159,7 +163,18 @@ async function launchProfile(profile, paths, fingerprint) {
   launchedBrowsers.set(profile.id, running);
   child.once("exit", () => { if (launchedBrowsers.get(profile.id) === running) launchedBrowsers.delete(profile.id); });
   try {
-    await pipe.send("Browser.getVersion");
+    const pageSessions=new Map();running.pageSessions=pageSessions;
+    pipe.on('message',message=>{
+      if(message.method==='Target.attachedToTarget'&&message.params.targetInfo.type==='page'){
+        const {sessionId,targetInfo}=message.params;
+        const ready=applyProtocol((method,params)=>pipe.send(method,params,sessionId),fp).then(()=>pipe.send('Runtime.runIfWaitingForDebugger',{},sessionId));
+        ready.catch(()=>{});pageSessions.set(targetInfo.targetId,{sessionId,ready});
+      }
+      if(message.method==='Target.detachedFromTarget')for(const [id,item] of pageSessions)if(item.sessionId===message.params.sessionId)pageSessions.delete(id);
+    });
+    await pipe.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:[{type:'page'},{exclude:true}]});
+    const runtimeVersion=await pipe.send("Browser.getVersion");
+    if(!runtimeVersion.product.endsWith("/"+version))throw new Error("本机 Chrome 版本在启动时发生变化，请重试");
     // Chrome 137 起不再接受正式版的 --load-extension；使用官方本地管道 API。
     const extension = await pipe.send("Extensions.loadUnpacked", { path: extDir });
     running.extensionId = extension.id;
@@ -185,10 +200,11 @@ async function launchProfile(profile, paths, fingerprint) {
     const { targetInfos } = await pipe.send("Target.getTargets");
     const target = targetInfos.find(target => target.type === "page");
     if (target) {
-      const { sessionId } = await pipe.send("Target.attachToTarget", { targetId: target.targetId, flatten: true });
-      await pipe.send("Page.navigate", { url: profile.startUrl || "about:blank" }, sessionId);
-      await pipe.send("Target.detachFromTarget", { sessionId });
-    } else await pipe.send("Target.createTarget", { url: profile.startUrl || "about:blank" });
+      const attached=pageSessions.get(target.targetId);
+      if(!attached)throw new Error('浏览标签的配置通道尚未就绪');
+      await attached.ready;
+      await pipe.send("Page.navigate", { url: startUrl }, attached.sessionId);
+    } else await pipe.send("Target.createTarget", { url: startUrl });
     child.unref();
     for (const stream of [child.stderr, child.stdio[3], child.stdio[4]]) if (stream.unref) stream.unref();
     return { pid: child.pid, chrome, fingerprint: fp, userDataDir, extensionId: extension.id };

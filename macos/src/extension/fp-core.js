@@ -103,35 +103,36 @@
     // userAgentData（Client Hints）
     try {
       if (navigator.userAgentData) {
+        var uaDataPrototype = Object.getPrototypeOf(navigator.userAgentData);
         var brands = [
           { brand: "Chromium", version: CFG.chromeVersion.split(".")[0] },
           { brand: "Google Chrome", version: CFG.chromeVersion.split(".")[0] },
           { brand: "Not-A.Brand", version: "99" },
         ];
-        def(navigator.userAgentData, "brands", function () {
+        def(uaDataPrototype, "brands", function () {
           return brands;
         });
-        def(navigator.userAgentData, "platform", function () {
+        def(uaDataPrototype, "platform", function () {
           return CFG.os === "android"
             ? "Android"
             : CFG.os === "mac"
               ? "macOS"
               : "Windows";
         });
-        def(navigator.userAgentData, "mobile", function () {
+        def(uaDataPrototype, "mobile", function () {
           return CFG.os === "android";
         });
         // getHighEntropyValues 也要吐一致数据
         if (navigator.userAgentData.getHighEntropyValues) {
           var _hev = navigator.userAgentData.getHighEntropyValues;
-          navigator.userAgentData.getHighEntropyValues = markNative(function (
+          uaDataPrototype.getHighEntropyValues = markNative(function (
             hints,
           ) {
-            var out = {};
+            var out = {brands:brands.concat(),mobile:CFG.os === "android",platform:CFG.os === "android"?"Android":CFG.os === "mac"?"macOS":"Windows"};
             var want = hints || [];
-            if (want.indexOf("architecture") >= 0) out.architecture = "x86";
+            if (want.indexOf("architecture") >= 0) out.architecture = CFG.os === "android"?"arm":"x86";
             if (want.indexOf("bitness") >= 0) out.bitness = "64";
-            if (want.indexOf("model") >= 0) out.model = "";
+            if (want.indexOf("model") >= 0) out.model = CFG.os === "android"?"SM-S918B":"";
             if (want.indexOf("platformVersion") >= 0)
               out.platformVersion =
                 CFG.os === "android"
@@ -140,7 +141,8 @@
                     ? "14.0.0"
                     : "10.0.0";
             if (want.indexOf("fullVersionList") >= 0)
-              out.fullVersionList = brands.concat();
+              out.fullVersionList = brands.map(function(b){return {brand:b.brand,version:b.brand==="Not-A.Brand"?"99.0.0.0":CFG.chromeVersion};});
+            if (want.indexOf("uaFullVersion") >= 0) out.uaFullVersion=CFG.chromeVersion;
             if (want.indexOf("wow64") >= 0) out.wow64 = false;
             return Promise.resolve(out);
           }, "getHighEntropyValues");

@@ -75,7 +75,14 @@ function registerWorkbench(store) {
     store.activity('批量导入代理',`${proxies.length} 条代理`);return {ok:true,count:proxies.length};
   });
   ipcMain.handle('star:proxyResult',(e,id,result)=>{store.setProxyResult(id,result);return {ok:true};});
-  ipcMain.handle('star:preferences',(e,patch)=>store.preferences(patch));
+  ipcMain.handle('star:preferences',(e,patch)=>{const next=store.preferences(patch);for(const w of BrowserWindow.getAllWindows())w.webContents.send('star:preferencesChanged',next);return next;});
+  ipcMain.on('star:sessionNow',(e,id,tabs,index)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile?.id===id)store.sessionTabs(id,tabs,index);});
+  ipcMain.handle('star:historyRecord',(e,id,url,title)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile?.id!==id)return false;return store.recordHistory(id,url,title);});
+  const permitted=(e,id)=>{const w=BrowserWindow.fromWebContents(e.sender);return !!w&&(!w._profile||w._profile.id===id);};
+  ipcMain.handle('star:historyList',(e,id)=>permitted(e,id)?store.history(id):[]);
+  ipcMain.handle('star:historyTop',(e,id,n)=>permitted(e,id)?store.historyTop(id,n):[]);
+  ipcMain.handle('star:historyClear',async(e,id)=>{if(!permitted(e,id))return false;const choice=await dialog.showMessageBox(BrowserWindow.fromWebContents(e.sender),{type:'question',title:'清除历史记录',message:'清除此环境保存的访问记录？',detail:'Cookie 和登录状态会保留。',buttons:['取消','清除记录'],defaultId:0,cancelId:0});if(choice.response!==1)return false;store.clearHistory(id);return true;});
+  ipcMain.handle('star:openWorkbench',(e,page)=>{const manager=BrowserWindow.getAllWindows().find(w=>!w._profile&&!w.isDestroyed());if(!manager)return false;manager.show();manager.focus();manager.webContents.send('star:navigate',['environments','downloads','proxies','bookmarks'].includes(page)?page:'environments');return true;});
   ipcMain.handle('star:session',(e,id,tabs,index)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile?.id!==id)return false;store.sessionTabs(id,tabs,index);return true;});
   ipcMain.handle('star:download',(e,id,action)=>{
     const item=downloadItems.get(id),record=store.downloads().find(d=>d.id===id);

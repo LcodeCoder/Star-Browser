@@ -23,6 +23,7 @@ class Store {
     this._data.proxies ||= [];
     this._data.activity ||= [];
     this._data.downloads ||= [];
+    this._data.history ||= {};
     this._data.preferences ||= { theme: "system", density: "comfortable" };
     // 首次运行（无 bookmarks 字段）时写入默认收藏夹；已有数据则保留用户收藏。
     if (!Array.isArray(this._data.bookmarks)) {
@@ -55,16 +56,19 @@ class Store {
       if (!fs.existsSync(backup)) throw new Error("环境数据无法读取：" + error.message);
       fs.copyFileSync(this.file, this.file + ".corrupt-" + Date.now());
       this._data = read(backup);
+      this._recovered = true;
     }
   }
 
   _save() {
     clearTimeout(this._saveTimer);
+    this._saveTimer = null;
     this._data.updatedAt = Date.now();
     fs.mkdirSync(this.dir, { recursive: true });
     const temporary = this.file + ".tmp";
     fs.writeFileSync(temporary, JSON.stringify(this._data, null, 2), { encoding: "utf-8", mode: 0o600 });
-    if (fs.existsSync(this.file)) fs.copyFileSync(this.file, this.file + ".bak");
+    if (!this._recovered && fs.existsSync(this.file)) fs.copyFileSync(this.file, this.file + ".bak");
+    this._recovered = false;
     fs.renameSync(temporary, this.file);
   }
 
@@ -124,6 +128,7 @@ class Store {
     const idx = this._data.profiles.findIndex((p) => p.id === id);
     if (idx >= 0) {
       this._data.profiles.splice(idx, 1);
+      delete this._data.history[id];
       this._save();
       return true;
     }
@@ -171,9 +176,26 @@ class Store {
   }
   sessionTabs(id, tabs, activeIndex) {
     const p=this.get(id); if (!p) return;
-    p.sessionTabs=(Array.isArray(tabs)?tabs:[]).filter(t=>/^https?:\/\//i.test(t.url||"")).slice(0,50).map(t=>({url:String(t.url).slice(0,4096),title:String(t.title||"").slice(0,120)}));
-    p.sessionActive=Number(activeIndex)||0; this._save();
+    const saved=(Array.isArray(tabs)?tabs:[]).filter(t=>/^https?:\/\//i.test(t.url||'')||t.url==='about:home').slice(0,50).map(t=>({url:String(t.url).slice(0,4096),title:String(t.title||'').slice(0,120)}));
+    const index=Math.min(Math.max(0,Number(activeIndex)||0),Math.max(0,saved.length-1));
+    if(JSON.stringify(p.sessionTabs)===JSON.stringify(saved)&&p.sessionActive===index)return;
+    p.sessionTabs=saved;p.sessionActive=index;this._save();
   }
+  history(id) { return this._data.history[id] || []; }
+  recordHistory(id,url,title) {
+    if(!this.get(id)||!/^https?:\/\//i.test(url||''))return false;
+    try { const parsed=new URL(url);parsed.username='';parsed.password='';url=parsed.href; }catch{return false;}
+    const list=this._data.history[id] ||= [],now=Date.now();
+    if(list[0]?.url===url&&now-list[0].time<2000){list[0].title=String(title||'').slice(0,500);return true;}
+    list.unshift({id:crypto.randomUUID(),url:String(url).slice(0,4096),title:String(title||'').slice(0,500),time:now});
+    this._data.history[id]=list.slice(0,2000);clearTimeout(this._saveTimer);this._saveTimer=setTimeout(()=>this._save(),500);this._saveTimer.unref?.();return true;
+  }
+  historyTop(id,n=8) {
+    const grouped=new Map();for(const row of this.history(id)){try{const host=new URL(row.url).host;if(grouped.has(host))grouped.get(host).count++;else grouped.set(host,{...row,count:1});}catch{}}
+    return [...grouped.values()].sort((a,b)=>b.count-a.count||b.time-a.time).slice(0,Math.min(Number(n)||8,30));
+  }
+  clearHistory(id) { this._data.history[id]=[];this._save(); }
+
   saveDownload(download) {
     const index=this._data.downloads.findIndex(d=>d.id===download.id);
     if (index>=0) this._data.downloads[index]=download; else this._data.downloads.unshift(download);

@@ -16,7 +16,7 @@ const raw=fs.mkdtempSync(path.join(os.tmpdir(),'changyi-asar-'));
 try{
  asar.extractAll(archive,raw);
  const archived=files(raw),copied=[];
- const modifications=new Set(['package.json','src/main/main.js','src/main/launcher.js','src/main/store.js','src/main/local-proxy.js','src/main/proxy-parse.js','src/preload/preload.js','src/renderer/browser-shell.js','src/extension/background.js','src/main/fingerprint.js','src/renderer/index.html','src/renderer/browser-shell.html','src/renderer/home.html','src/renderer/tutorial.html']);
+ const modifications=new Set(['package.json','src/main/main.js','src/main/launcher.js','src/main/store.js','src/main/local-proxy.js','src/main/proxy-parse.js','src/preload/preload.js','src/renderer/browser-shell.js','src/extension/background.js','src/main/fingerprint.js','src/extension/fp-core.js','src/extension/manifest.json','src/renderer/index.html','src/renderer/browser-shell.html','src/renderer/home.html','src/renderer/tutorial.html']);
  for(const name of archived){
   const target=path.join(root,name);if(!fs.existsSync(target))throw new Error('缺失原始文件：'+name);
   const baseline=fs.readFileSync(path.join(original,'extracted',name));

@@ -21,7 +21,7 @@ npm run test:package
 - [能力研究与实际范围](macos/docs/capabilities.md)
 - [验证记录](macos/docs/verification.md)
 
-macOS 移植基线已通过 17 项 Electron/Chrome 端到端检查及 4 项真实打包检查。Star 品牌与新工作台正在连续实现，新改动以对应验证记录为准。
+Star Browser 0.2.0 已通过 14 项单元测试、23 项 Electron/Chrome 端到端检查和 4 项真实打包检查。已提供 Star 星形图标、浅深主题工作台、批量环境管理、代理库、会话恢复、查找、缩放与环境历史。具体测试范围及证据位置见验证记录。
 
 指纹处理包含页面 JavaScript 和 CDP 配置；此工程尚不提供内核级反检测保证、远程团队服务、云浏览器或代理购买服务。
 

@@ -481,7 +481,7 @@ function generateFingerprint(seed, opts = {}) {
     maxTouchPoints = 0;
     devicePixelRatio = pick(rng, [1, 1, 1, 1, 1.25, 1.5]);
     cores = pick(rng, [4, 8, 8, 12, 16]);
-    memory = pick(rng, [4, 8, 8, 16]);
+    memory = pick(rng, [4, 8, 8, 8]);
     gpu = pick(rng, GPU_VENDORS);
   }
 

@@ -35,7 +35,7 @@ async function guestFor(profileId,urlPart='/probe'){
  },{id:profileId,part:urlPart}));
 }
 async function guestEval(id,code){return app.evaluate(({webContents},{id,code})=>webContents.fromId(id).executeJavaScript(code),{id,code});}
-async function closeProfile(id){await app.evaluate(({BrowserWindow},id)=>{for(const w of BrowserWindow.getAllWindows())if(w._profile?.id===id)w.close();},id);}
+async function closeProfile(id){await app.evaluate(({BrowserWindow},id)=>{for(const w of BrowserWindow.getAllWindows())if(w._profile?.id===id)w.close();},id);await until(()=>app.evaluate(({BrowserWindow},id)=>!BrowserWindow.getAllWindows().some(w=>w._profile?.id===id),id));}
 async function createProfile(name,proxy=null){
  return api('create',{name,os:'mac',country:'JP',language:'ja-JP',langManual:true,timezone:'Asia/Tokyo',timezoneManual:true,startUrl:`http://qa.local:${origin.port}/probe`,proxy});
 }
@@ -63,6 +63,43 @@ async function createProfile(name,proxy=null){
    await manager.locator(`[data-act="fp"][data-id="${primary.id}"]`).click();await manager.locator('#drawer').waitFor({state:'visible'});await manager.locator('#drawerClose').click();
    const preview=await api('preview',primary.id);assert.equal(preview.platform,'MacIntel');assert.equal(preview.language,'ja-JP');assert.equal(preview.timezone,'Asia/Tokyo');
    await manager.screenshot({path:path.join(output,'management.png')});
+  });
+  await check('置顶、独立复制、归档与恢复的实际操作闭环',async()=>{
+   const menu=()=>manager.getByRole('button',{name:primary.name+' 更多操作',exact:true});
+   await menu().click();await manager.getByRole('menuitem',{name:'置顶环境',exact:true}).click();
+   await until(async()=>(await api('list')).find(p=>p.id===primary.id)?.pinned);
+   await menu().click();await manager.getByRole('menuitem',{name:'复制为新环境',exact:true}).click();
+   const copy=await until(async()=>(await api('list')).find(p=>p.name===primary.name+' 副本'));assert.notEqual(copy.seed,primary.seed);assert.equal((await api('cookieCount',copy.id)).count,0);
+   const copyMenu=()=>manager.getByRole('button',{name:copy.name+' 更多操作',exact:true});
+   await copyMenu().click();await manager.getByRole('menuitem',{name:'移入归档',exact:true}).click();await until(async()=>(await api('list')).find(p=>p.id===copy.id)?.archived);
+   await manager.locator('.view-tabs').getByRole('button',{name:'归档',exact:true}).click();await manager.locator(`[data-profile-id="${copy.id}"]`).waitFor();
+   await copyMenu().click();await manager.getByRole('menuitem',{name:'恢复环境',exact:true}).click();await until(async()=>!(await api('list')).find(p=>p.id===copy.id)?.archived);
+   await manager.locator('.view-tabs').getByRole('button',{name:'全部环境',exact:true}).click();await api('remove',copy.id);await manager.getByRole('button',{name:'刷新工作台'}).click();
+  });
+  await check('环境导出、导入预览与确认使用新的独立 ID',async()=>{
+   const file=path.join(data,'star-profiles.json');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},file);
+   const exported=await api('exportProfiles',[primary.id]);assert.equal(exported.count,1);assert.equal(JSON.parse(fs.readFileSync(file)).profiles[0].name,primary.name);
+   await manager.getByRole('button',{name:'导入 / 导出'}).click();await manager.getByRole('menuitem',{name:'导入环境',exact:true}).click();
+   const modal=manager.getByRole('dialog',{name:'确认导入环境'});await modal.waitFor();await modal.getByRole('button',{name:'导入 1 个环境',exact:true}).click();
+   const imported=await until(async()=>(await api('list')).find(p=>p.name===primary.name&&p.id!==primary.id));assert.equal((await api('cookieCount',imported.id)).count,0);await api('remove',imported.id);await manager.getByRole('button',{name:'刷新工作台'}).click();
+  });
+  await check('代理库实际添加、检测、分配与失败导入保留原数据',async()=>{
+   await manager.locator('#navProxy').click();await manager.getByRole('button',{name:'添加代理',exact:true}).first().click();const modal=manager.getByRole('dialog',{name:'添加代理',exact:true});
+   await modal.getByLabel('名称',{exact:true}).fill('本地 QA 网络');await modal.getByLabel('地址',{exact:true}).fill('127.0.0.1');await modal.getByLabel('端口',{exact:true}).fill(String(httpProxy.port));await modal.getByRole('button',{name:'保存代理',exact:true}).click();
+   const proxy=await until(async()=>(await api('snapshot')).proxies.find(p=>p.name==='本地 QA 网络'));
+   await app.evaluate(({net},url)=>{globalThis.__qaNetRequest=net.request;net.request=options=>globalThis.__qaNetRequest(typeof options==='string'?url:{...options,url});},`http://qa.local:${origin.port}/geo`);await manager.getByRole('button',{name:'检测',exact:true}).click();await until(async()=>(await api('snapshot')).proxies.find(p=>p.id===proxy.id)?.check?.ok);await app.evaluate(({net})=>{net.request=globalThis.__qaNetRequest;delete globalThis.__qaNetRequest;});
+   const assignment=await createProfile('代理分配 QA');await manager.getByRole('button',{name:'更多操作',exact:true}).click();await manager.getByRole('menuitem',{name:'分配给环境',exact:true}).click();
+   const choose=manager.getByRole('dialog',{name:'分配代理',exact:true});await choose.locator('select').selectOption(assignment.id);await choose.getByRole('button',{name:'分配到环境',exact:true}).click();assert.equal((await api('list')).find(p=>p.id===assignment.id).proxy.port,String(httpProxy.port));
+   const count=(await api('snapshot')).proxies.length;await assert.rejects(api('proxyImport','http://127.0.0.1:8080\nssh://bad:22'));assert.equal((await api('snapshot')).proxies.length,count);
+   await api('remove',assignment.id);await manager.locator('#navEnv').click();
+  });
+  await check('命令定位、浅深主题、离线反馈与窄窗口返回',async()=>{
+   await manager.locator('#search').focus();await manager.keyboard.press('Meta+k');const dialog=manager.getByRole('dialog',{name:'搜索与快速操作'});await dialog.waitFor();await dialog.locator('[cmdk-input]').fill(primary.name);await dialog.locator('[cmdk-item]').filter({hasText:primary.name}).click();await manager.locator('#drawer').waitFor();await manager.locator('#drawerClose').click();
+   await manager.locator('#navSettings').click();await manager.locator('[data-theme-choice="dark"]').click();await manager.waitForFunction(()=>document.documentElement.dataset.theme==='dark');await manager.screenshot({path:path.join(output,'workbench-dark.png')});
+   await manager.locator('[data-theme-choice="light"]').click();await manager.locator('#navEnv').click();await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>!w._profile);w.setSize(800,760);});
+   await manager.locator(`[data-profile-id="${primary.id}"] .profile-name`).click();await manager.getByRole('button',{name:'返回环境',exact:true}).waitFor({state:'visible'});assert.ok(await manager.locator('#drawer').isVisible());await manager.screenshot({path:path.join(output,'workbench-narrow-detail.png')});await manager.getByRole('button',{name:'返回环境',exact:true}).click();
+   await manager.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});dispatchEvent(new Event('offline'));});await manager.locator('.network-banner').waitFor();await manager.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true});dispatchEvent(new Event('online'));});
+   await app.evaluate(({BrowserWindow})=>{BrowserWindow.getAllWindows().find(w=>!w._profile).setSize(1440,900);});
   });
   await check('内置浏览器首个页面脚本读取到目标指纹',async()=>{
    const newWindow=app.waitForEvent('window');await api('browse',primary.id);const browser=await newWindow;
@@ -98,6 +135,19 @@ async function createProfile(name,proxy=null){
    const afterNew=await browser.locator('#tabs > *').count();await browser.keyboard.press('Meta+w');
    await until(async()=> (await browser.locator('#tabs > *').count())===afterNew-1);assert.equal(browser.isClosed(),false);
    await closeProfile(primary.id);
+  });
+  await check('标签会话恢复、页内查找、关闭恢复、缩放与历史',async()=>{
+   const next=app.waitForEvent('window');await api('browse',primary.id);const browser=await next;await guestFor(primary.id,'/popup');
+   assert.ok(await browser.locator('#tabs [role="tab"]').count()>=2);await browser.locator('#addr').click();await browser.keyboard.press('Meta+f');await browser.locator('#findInput').waitFor();await browser.locator('#findInput').fill('macOS');await until(async()=>/\d+ \/ \d+/.test(await browser.locator('#findResult').textContent()));await browser.locator('#findClose').click();
+   await browser.locator('#addr').click();await browser.keyboard.press('Meta+t');await browser.locator('#ntp').waitFor({state:'visible'});await browser.screenshot({path:path.join(output,'browser-new-tab.png')});const count=await browser.locator('#tabs > *').count();await browser.keyboard.press('Meta+w');await until(async()=>(await browser.locator('#tabs > *').count())===count-1);await browser.keyboard.press('Meta+Shift+t');await until(async()=>(await browser.locator('#tabs > *').count())===count);
+   await browser.locator('#browserMenuBtn').click();await browser.locator('[data-command="zoom-in"]').click();assert.equal(await browser.locator('#zoomValue').textContent(),'110%');await browser.locator('[data-command="zoom-reset"]').click();assert.equal(await browser.locator('#zoomValue').textContent(),'100%');await browser.locator('#browserMenuBtn').click();
+   await browser.locator('#tabSearchBtn').click();await browser.locator('#tabSearchInput').fill('macOS');await browser.locator('.tab-search-item').first().click();
+   await browser.locator('#historyBtn').click();await until(async()=>(await browser.locator('.history-item').count())>0);assert.ok((await api('historyList',primary.id)).some(r=>r.url.includes('/probe')));assert.ok(!(await api('historyList',second.id)).some(r=>r.url.includes('/popup')));
+   await api('preferences',{theme:'dark'});await browser.waitForFunction(()=>document.documentElement.dataset.theme==='dark');await browser.screenshot({path:path.join(output,'browser-dark-history.png')});await api('preferences',{theme:'light'});await closeProfile(primary.id);
+  });
+  await check('不可连接的代理阻止启动，网页流量不会回退直连',async()=>{
+   const profile=await createProfile('失效代理 QA',{type:'http',host:'127.0.0.1',port:'1'}),before=origin.requests.filter(r=>r.url.startsWith('/probe')).length;
+   await assert.rejects(api('browse',profile.id),/代理/);assert.equal(await app.evaluate(({BrowserWindow},id)=>BrowserWindow.getAllWindows().filter(w=>w._profile?.id===id).length,profile.id),0);assert.equal(origin.requests.filter(r=>r.url.startsWith('/probe')).length,before);await api('remove',profile.id);
   });
   for(const [name,proxy,fixture]of[
    ['HTTP 代理', {type:'http',host:'127.0.0.1',port:String(httpProxy.port)},httpProxy],
@@ -154,10 +204,11 @@ async function createProfile(name,proxy=null){
       }
       fs.writeFileSync(path.join(output,'chrome-diagnostic.json'),JSON.stringify(diagnostic,null,2));throw error;
     }
-    assert.equal(early.platform,'MacIntel');assert.equal(early.language,'ja-JP');assert.equal(early.tz,'Asia/Tokyo');assert.equal(early.ua,launched.ua);
+    assert.equal(early.platform,'MacIntel');assert.equal(early.language,'ja-JP');assert.equal(early.tz,'Asia/Tokyo');assert.equal(early.ua,launched.ua);const runtime=await send('Browser.getVersion');assert.ok(early.ua.includes(runtime.product.replace(/^Chrome\//,'')));
     const response=await send('Runtime.evaluate',{expression:"fetch('/status').then(async r=>({status:r.status,body:await r.text()}))",returnByValue:true,awaitPromise:true},sessionId);
     assert.deepEqual(response.result.value,{status:201,body:'first:second'});
     if(name==='独立 Chrome'){
+      await send('Page.navigate',{url:`http://localhost:${origin.port}/probe`},sessionId);const hints=await until(async()=>{const result=await send('Runtime.evaluate',{expression:"location.hostname==='localhost' && window.early && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues(['fullVersionList','platform','architecture'])",returnByValue:true,awaitPromise:true},sessionId);return result.result?.value;});assert.equal(hints.platform,'macOS');assert.ok(hints.fullVersionList.some(b=>runtime.product.endsWith('/'+b.version)),JSON.stringify({hints,runtime,ua:launched.ua}));
       const shot=await send('Page.captureScreenshot',{},sessionId);fs.writeFileSync(path.join(output,'external-chrome.png'),Buffer.from(shot.data,'base64'));
     }
     await send('Browser.close').catch(()=>{});
