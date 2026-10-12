@@ -140,7 +140,7 @@ const HOME_URL =
 // 而 Electron 的 net.request 默认【不自动跟随】重定向，会导致拉取配置静默失败。
 const LAUNCHER_CONFIG_URL = "https://www.chuhailiqi.com/cy/launcher.json";
 // 构建版本标记（UI 可见，便于确认用户跑的是不是最新包）
-const BUILD_TAG = "star-2026-10-12";
+const BUILD_TAG = "Star Browser " + app.getVersion();
 // 诊断日志：写到 userData/tfb-debug.log，供排查"打不开网页"用
 function dbg(msg) {
   try {
@@ -214,7 +214,7 @@ function telemetryEnabled() {
   if (TEST_MODE || process.env.TFB_DISABLE_TELEMETRY === "1") return false;
   const t = loadTelemetry();
   return false;
-} // 默认开启
+} // 当前 Star 版本不启用匿名统计
 function sendStats(event, payload) {
   if (!telemetryEnabled()) return;
   if (!event) return;
@@ -480,6 +480,15 @@ app.commandLine.appendSwitch(
 
 // ---------------- 共享：应用内浏览器（内置 Chromium 内核 + webview + 指纹注入）----------------
 // 创建浏览窗口（Lite 主窗口 / Pro 应用内打开共用），通过 browse:init 下发指纹配置。
+function browserProfileMetadata(profile) {
+  return {
+    country: profile.country, timezone: profile.timezone,
+    timezoneManual: !!profile.timezoneManual, language: profile.language,
+    langManual: !!profile.langManual, note: profile.note || '',
+    tags: [...(profile.tags || [])], configuredStartUrl: profile.startUrl || 'about:home',
+    preferences: store?.preferences() || {},
+  };
+}
 function createBrowseWindow(profile, fingerprint) {
   const fp =
     fingerprint ||
@@ -493,8 +502,8 @@ function createBrowseWindow(profile, fingerprint) {
   const browserWin = new BrowserWindow({
     width: 1280,
     height: 820,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 640,
+    minHeight: 500,
     title:
       "Star Browser · " + (profile.name || "浏览环境"),
     webPreferences: {
@@ -522,6 +531,7 @@ function createBrowseWindow(profile, fingerprint) {
     homeUrl: HOME_URL,
     savedTabs: profile.restoreSession !== false ? profile.sessionTabs || [] : [],
     savedActive: profile.sessionActive || 0,
+    ...browserProfileMetadata(profile),
   };
   browserWin._profile = Object.assign({}, profile, {
     proxy: profile.proxy || null,
@@ -1099,47 +1109,18 @@ function registerIpc() {
   // 浏览窗口保存设置（Lite / Pro 应用内打开共用）：持久化 + 重生成指纹，返回新配置
   ipcMain.handle("browse:saveProfile", (e, patch) => {
     const w = BrowserWindow.fromWebContents(e.sender);
-    const cur = w && w._profile ? w._profile : null;
-    if (!cur) return null;
-    if (patch && patch.country) cur.country = patch.country;
-    if (patch && patch.timezone) cur.timezone = patch.timezone;
-    if (patch && patch.timezoneManual !== undefined)
-      cur.timezoneManual = !!patch.timezoneManual;
-    if (patch && patch.language) cur.language = patch.language;
-    if (patch && patch.langManual !== undefined)
-      cur.langManual = !!patch.langManual;
-    if (patch && patch.startUrl) cur.startUrl = patch.startUrl;
-    if (patch && patch.proxy)
-      cur.proxy = Object.assign(cur.proxy || {}, patch.proxy);
-    if (patch && patch.webrtc)
-      cur.webrtc = patch.webrtc === "disable" ? "disable" : "proxy";
-    if (patch && patch.regen)
-      cur.seed = Math.floor(Math.random() * 1e9).toString(36);
-    if (patch && patch.note !== undefined) cur.note = patch.note;
-    if (patch && patch.tags !== undefined) cur.tags = patch.tags;
-
-    if (MODE === "lite") {
-      writeLiteProfile(cur);
-    } else if (cur.id && store.get(cur.id)) {
-      store.update(cur.id, {
-        country: cur.country,
-        startUrl: cur.startUrl,
-        proxy: cur.proxy,
-        webrtc: cur.webrtc,
-        seed: cur.seed,
-        note: cur.note,
-        tags: cur.tags,
-        timezone: cur.timezone,
-        timezoneManual: cur.timezoneManual,
-        language: cur.language,
-        langManual: cur.langManual,
-      });
-    }
+    const original = w && w._profile ? w._profile : null;
+    if (!original) return null;
+    if(original.id)require('./profile-backups').assertProfileUnlocked(original.id);
+    const validated=require('./profile-validation').validateProfile(patch||{});
+    const cur={...original,...validated,proxy:validated.proxy!==undefined?validated.proxy:original.proxy};
+    if(patch?.regen)cur.seed=crypto.randomUUID();
 
     // 时区：手动锁定时用用户指定值；否则沿用「已对齐到出口 IP」的时区（fpCache）。
     // ⚠️ 旧实现直接把 cur.timezone 传进去，而自动模式下它通常为空 → generateFingerprint 退化成
     // 国家默认值（US→America/New_York）＝「每次保存设置都把时区打回纽约」，直接破坏地理对齐。
     let effTz = cur.timezoneManual && cur.timezone ? cur.timezone : "";
+    if(!cur.timezoneManual&&!cur.proxy?.host)effTz=hostTimeZone();
     if (!effTz && cur.id) {
       const cached = fpCache.get(cur.id);
       if (cached && cached.timezone) effTz = cached.timezone;
@@ -1148,7 +1129,7 @@ function registerIpc() {
       os: cur.os, fingerprint: cur.fingerprint,
       country: cur.country,
       timezone: effTz,
-      language: cur.language,
+      language: cur.langManual||cur.proxy?.host?cur.language:hostLocale(),
     });
     fp.webrtc = cur.webrtc || "disable";
     const payload = {
@@ -1170,10 +1151,13 @@ function registerIpc() {
       preloadURL: pathToFileURL(writeWebviewPreload(cur, fp)).toString(),
       startUrl: resolveStartUrl(cur.startUrl),
       homeUrl: HOME_URL,
+      ...browserProfileMetadata(cur),
     };
+    if (MODE === "lite") writeLiteProfile(cur);
+    else if(cur.id&&store.get(cur.id))store.transaction(()=>store.update(cur.id,{...validated,...(patch?.regen?{seed:cur.seed}:{})}));
     w._profile = cur;
     w._init = payload;
-    if (cur.id) fpCache.set(cur.id, fp);
+    if(cur.id){fpCache.set(cur.id,fp);const envSes=session.fromPartition("persist:tfb-env-"+cur.id);envSes.__tfbFp=fp;envSes.__tfbEnvId=cur.id;}
     return payload;
   });
 
@@ -1904,8 +1888,10 @@ function registerIpc() {
   ipcMain.handle("browse:syncGeo", async (e, opts) => {
     opts = opts || {};
     const w = BrowserWindow.fromWebContents(e.sender);
-    const cur = w && w._profile ? w._profile : null;
+    const original = w && w._profile ? w._profile : null;
+    const cur=original?structuredClone(original):null;
     if (!cur) return { ok: false, error: "无环境上下文" };
+    if(cur.id)require("./profile-backups").assertProfileUnlocked(cur.id);
     // 有代理走代理出口；无代理走本机直连出口（让直连环境的指纹也跟随真实网络地理位置）
     let r;
     if (cur.proxy && cur.proxy.host) r = await checkProxyGeo(cur.proxy);
@@ -1927,8 +1913,10 @@ function registerIpc() {
       }
       if (!r.ok) return { ok: false, error: r.error };
     }
+    if (w.isDestroyed() || w._profile !== original) return {ok:false, error:"环境配置已变化，请重新检测"};
+    if (cur.id) require("./profile-backups").assertProfileUnlocked(cur.id);
     const overrideLang = opts.overrideLang !== false;
-    const newTz = r.timezone;
+    const newTz = cur.timezoneManual&&cur.timezone?cur.timezone:r.timezone;
     const newLang = overrideLang ? r.locale : cur.language || r.locale;
     const newCountry = r.country || cur.country;
     const changed =
@@ -1975,10 +1963,11 @@ function registerIpc() {
       preloadURL: pathToFileURL(writeWebviewPreload(cur, fp)).toString(),
       startUrl: resolveStartUrl(cur.startUrl),
       homeUrl: HOME_URL,
+      ...browserProfileMetadata(cur),
     };
     w._profile = cur;
     w._init = payload;
-    if (cur.id) fpCache.set(cur.id, fp);
+    if(cur.id){fpCache.set(cur.id,fp);const envSes=session.fromPartition("persist:tfb-env-"+cur.id);envSes.__tfbFp=fp;envSes.__tfbEnvId=cur.id;}
     return { ok: true, changed, payload };
   });
 }

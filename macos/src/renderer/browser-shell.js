@@ -344,55 +344,16 @@ function applyProxyPaste() {
   toast("已自动填入代理：" + host + (port ? ":" + port : ""));
 }
 
-$("gear").addEventListener("click", () => {
-  if (panel.hidden) {
-    fillCountries();
-    fillLanguages();
-    fillTimezones();
-    syncPanelFromProfile();
-    try {
-      window.api
-        .getTelemetry()
-        .then((on) => {
-          const el = $("s-telemetry");
-          if (el) el.checked = !!on;
-        })
-        .catch(() => {});
-    } catch (_) {}
-  }
-  panel.hidden = !panel.hidden;
-});
-$("s-close").addEventListener("click", () => {
-  panel.hidden = true;
-});
-$("s-cancel").addEventListener("click", () => {
-  panel.hidden = true;
-});
+$("gear").addEventListener("click", () => panel.hidden ? StarSettings.open() : StarSettings.close());
+$("s-close").addEventListener("click", () => StarSettings.close());
+$("s-cancel").addEventListener("click", () => StarSettings.close());
 $("s-paste-go").addEventListener("click", () => applyProxyPaste());
 // 语言下拉：用户手动切换 -> 锁定为手动（不再被代理 IP 覆盖）
 $("s-language").addEventListener("change", () => {
   langEdited = true;
 });
 // 「↺ 跟随代理 IP」：放弃手动语言，重新按出口 IP 对齐时区/语言
-$("s-lang-reset").addEventListener("click", async () => {
-  if (!profile || !profile.proxy || !profile.proxy.host) {
-    toast("请先启用并填写代理");
-    return;
-  }
-  try {
-    const r = await window.api.syncGeo({ overrideLang: true });
-    if (r && r.ok) {
-      profile = r.payload;
-      rebuildAllTabs();
-      langEdited = false;
-      toast("已恢复跟随代理 IP 语言：" + (r.payload.language || ""));
-    } else {
-      toast("同步失败：" + ((r && r.error) || "未知"));
-    }
-  } catch (e) {
-    toast("同步异常：" + (e.message || e));
-  }
-});
+$("s-lang-reset").addEventListener("click",()=>StarSettings.resetLanguage());
 // 时区下拉：手动选中某个时区 -> 锁定（不再被出口 IP 地理覆盖），用于对齐特定检测站的 GeoIP 库
 const tzSel = $("s-timezone");
 if (tzSel)
@@ -401,23 +362,21 @@ if (tzSel)
   });
 // 「↺ 恢复自动」：放弃手动时区，回到跟随出口 IP
 $("s-tz-reset").addEventListener("click", () => {
-  if (tzSel) tzSel.value = "";
-  tzEdited = false;
-  toast("已恢复自动：时区将跟随出口 IP");
+  StarSettings.resetTimezone();
 });
 function syncPanelFromProfile() {
   if (!profile) return;
   $("s-country").value = profile.country || "US";
-  $("s-language").value = profile.language || "en-US";
+  $("s-language").value = profile.langManual?profile.language||"en-US":profile.fingerprint?.language||profile.language||"en-US";
   $("s-version").textContent =
-    profile.buildTag || (window.api.version ? window.api.version() : "");
+    profile.buildTag || "—";
   langEdited = false;
   // 时区：仅当之前手动锁定过才回填，否则显示「自动」
   if ($("s-timezone"))
     $("s-timezone").value =
       profile.timezoneManual && profile.timezone ? profile.timezone : "";
   tzEdited = false;
-  $("s-start").value = profile.startUrl || "";
+  $("s-start").value = profile.configuredStartUrl || (/^https?:/.test(profile.startUrl||"")?profile.startUrl:"about:home");
   const proxy = profile.proxy || {};
   $("s-proxyOn").checked = !!proxy.host;
   $("s-type").value = proxy.type || "socks5";
@@ -457,6 +416,7 @@ $("s-clear").addEventListener("click", async () => {
   }
 });
 $("s-save").addEventListener("click", async () => {
+  if(!StarSettings.beginSave())return;
   const country = $("s-country").value;
   const startUrl = $("s-start").value.trim();
   const on = $("s-proxyOn").checked;
@@ -479,14 +439,10 @@ $("s-save").addEventListener("click", async () => {
     .map((s) => s.trim())
     .filter(Boolean);
   const language = $("s-language").value;
-  const langManual = langEdited ? true : profile.langManual || false;
+  const langManual = StarSettings.languageManual();
   // 时区：手动选中则锁定该时区（用于对齐特定检测站的 GeoIP 库）；选「自动」则跟随出口 IP
   const timezone = $("s-timezone") ? $("s-timezone").value : "";
-  const timezoneManual = tzEdited ? true : profile.timezoneManual || false;
-  try {
-    if ($("s-telemetry"))
-      window.api.setTelemetry($("s-telemetry").checked).catch(() => {});
-  } catch (_) {}
+  const timezoneManual = !!timezone;
   try {
     const np = await window.api.browseSave({
       country,
@@ -501,12 +457,13 @@ $("s-save").addEventListener("click", async () => {
       timezone,
       timezoneManual,
     });
+    if (!np) throw new Error("环境已关闭，请重新打开后再保存");
     if (np) {
       profile = np;
       homeUrl = np.homeUrl || homeUrl;
       StarBrowser.init({...np,preferences:profile.preferences});
       rebuildAllTabs();
-      panel.hidden = true;
+      StarSettings.close(true);
       langEdited = false;
       toast("已应用新配置到所有标签");
       // 配了代理：顺手把时区/语言对齐到出口 IP（用户已手动设语言则只对齐时区）
@@ -521,8 +478,8 @@ $("s-save").addEventListener("click", async () => {
       }
     }
   } catch (err) {
-    toast("保存失败：" + (err.message || err));
-  }
+    StarSettings.error(err.message || String(err));
+  }finally{StarSettings.endSave();}
 });
 
 // ---------------- 社媒快捷启动台 ----------------
@@ -1422,94 +1379,7 @@ if ($("ntpSearch"))
   });
 
 // ---------------- 代理出口 IP 自检 ----------------
-$("s-check").addEventListener("click", async () => {
-  if (!profile) return;
-  const proxy = profile.proxy || {};
-  if (!proxy.host) {
-    toast("请先在上方启用并填写代理");
-    return;
-  }
-  const box = $("s-check-result");
-  box.hidden = false;
-  box.className = "check-result";
-  box.textContent = "检测中…";
-  try {
-    const info = await window.api.proxyCheck(proxy);
-    if (info && info.error) {
-      box.className = "check-result bad";
-      box.textContent = "检测失败：" + info.error;
-      return;
-    }
-    const ip = info.ip || "未知";
-    const cc = (info.country || "").toUpperCase();
-    const region = [info.city, info.region, info.org]
-      .filter(Boolean)
-      .join(" · ");
-    const expect = (profile.country || "").toUpperCase();
-    const match = cc && expect && cc === expect;
-    box.className = "check-result " + (match ? "ok" : "bad");
-    box.textContent =
-      "出口 IP：" +
-      ip +
-      "\n国家：" +
-      cc +
-      (region ? "（" + region + "）" : "") +
-      "\n指纹国家：" +
-      expect +
-      (match
-        ? " ✓ 一致"
-        : cc
-          ? " ✗ 不一致，建议把指纹国家改为 " + cc
-          : " ✗ 无法比对国家");
-    box.style.whiteSpace = "pre-line";
-    // 自动把指纹时区/语言对齐到出口 IP 地理位置（whoer/yalala 据此比对，必须一致才不报红）
-    if (info.timezone && info.locale) {
-      box.textContent +=
-        "\n检测到时区 " + info.timezone + " / 语言 " + info.locale;
-      const sameTz =
-        profile.timezone === info.timezone && profile.language === info.locale;
-      if (!sameTz) {
-        try {
-          const np = await window.api.browseSave({
-            country: cc || profile.country,
-            timezone: info.timezone,
-            language: info.locale,
-            proxy: profile.proxy,
-            webrtc: profile.webrtc,
-          });
-          if (np) {
-            profile = np;
-            homeUrl = np.homeUrl || homeUrl;
-            const urls = tabs.map((t) => t.url || homeUrl);
-            tabs.forEach((t) => {
-              try {
-                t.web.remove();
-              } catch (e) {}
-            });
-            tabs.length = 0;
-            urls.forEach((u) => createTab(u));
-            toast(
-              "已根据出口IP自动同步时区(" +
-                info.timezone +
-                ")与语言(" +
-                info.locale +
-                ")",
-            );
-          }
-        } catch (err) {
-          toast("同步时区失败：" + (err.message || err));
-        }
-      } else {
-        box.textContent += "\n（时区/语言已与IP一致，无需重新注入）";
-      }
-    } else {
-      box.textContent += "\n（未获取到出口IP地理位置，未自动同步时区/语言）";
-    }
-  } catch (err) {
-    box.className = "check-result bad";
-    box.textContent = "检测异常：" + (err.message || err);
-  }
-});
+$("s-check").addEventListener("click", () => StarSettings.checkProxy());
 
 // ---------------- Cookie 备份 / 恢复 ----------------
 $("s-cookie-out").addEventListener("click", async () => {

@@ -330,70 +330,42 @@
 
   <div id="fatal" class="fatal" role="alert" hidden><div class="fatal-copy"><strong>页面暂时无法打开</strong><span id="fatalMessage"></span></div><button class="btn" id="fatalRetry">重新加载</button><button class="tb" id="fatalClose" title="关闭提示"></button></div>
 
-  <div id="settings" class="panel" hidden>
-    <div class="panel-head"><span>环境设置</span><button class="btn ghost" id="s-close">✕</button></div>
-    <label>国家 / 地区</label>
-    <select id="s-country"></select>
-    <label>浏览器语言</label>
-    <select id="s-language"></select>
-    <div class="hint">默认跟随代理 IP 所在地语言；如需固定某语言，在此切换，或点下方「↺ 跟随代理 IP」恢复自动。</div>
-    <div style="margin-top:6px;display:flex;gap:6px;">
-      <button class="btn ghost" id="s-lang-reset" type="button" style="height:30px;">↺ 跟随代理 IP</button>
+  <div id="settingsOverlay" class="settings-overlay" hidden></div>
+  <div id="settings" class="panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-describedby="settingsDescription" hidden>
+    <div class="panel-head"><div><h2 id="settingsTitle">环境设置</h2><p id="settingsDescription">保存后会重新加载本环境的标签。</p></div><button class="btn ghost" id="s-close" aria-label="关闭环境设置">✕</button></div>
+    <div class="settings-body">
+      <section class="settings-section"><h3>页面与位置</h3>
+        <label for="s-start">起始网址</label><input id="s-start" type="text" placeholder="about:home 或 https://…" />
+        <label for="s-country">国家 / 地区</label><select id="s-country"></select>
+        <label for="s-language">浏览器语言</label><select id="s-language"></select>
+        <div class="setting-inline"><span id="settingsLanguageMode" class="hint"></span><button class="btn ghost" id="s-lang-reset" type="button">恢复自动</button></div>
+        <label for="s-timezone">时区</label><select id="s-timezone"></select>
+        <div class="setting-inline"><span class="hint">自动模式根据网络位置设置。</span><button class="btn ghost" id="s-tz-reset" type="button">恢复自动</button></div>
+      </section>
+      <section class="settings-section"><h3>网络连接</h3>
+        <label class="chk"><input id="s-proxyOn" type="checkbox" /> 使用代理</label>
+        <div id="settingsProxyFields">
+          <label for="s-type">代理类型</label><select id="s-type"><option value="socks5">SOCKS5</option><option value="http">HTTP</option><option value="https">HTTPS</option></select>
+          <label for="s-paste">粘贴代理配置</label><div class="settings-paste"><input id="s-paste" type="text" placeholder="host:port:user:pass" /><button class="btn" id="s-paste-go" type="button">解析</button></div>
+          <label for="s-host">地址与端口</label><input id="s-host" type="text" placeholder="proxy.example.com:8080" />
+          <div class="settings-pair"><div><label for="s-user">账号（可选）</label><input id="s-user" type="text" autocomplete="off" /></div><div><label for="s-pass">密码（可选）</label><input id="s-pass" type="password" autocomplete="off" /></div></div>
+          <button id="s-check" class="btn settings-check" type="button">检测当前代理</button>
+        </div><div id="s-check-result" class="check-result" role="status" hidden></div>
+        <label for="s-webrtc">实时连接（WebRTC）</label><select id="s-webrtc"><option value="disable">限制实时连接</option><option value="proxy">保留连接，限制网络接口</option></select>
+        <div class="hint">限制模式可能影响网页通话。保留模式的 UDP 连接可能绕过代理，请按实际网络测试。</div>
+      </section>
+      <details class="settings-section"><summary>整理与备注</summary>
+        <label for="s-note">备注</label><input id="s-note" type="text" placeholder="项目或用途" />
+        <label for="s-tags">标签</label><input id="s-tags" type="text" placeholder="使用逗号分隔" />
+      </details>
+      <details class="settings-section"><summary>浏览数据与身份</summary>
+        <div class="settings-data-actions"><button id="s-cookie-out" class="btn">备份 Cookie</button><button id="s-cookie-in" class="btn">恢复 Cookie</button><button id="s-clear" class="btn">清除浏览数据</button></div>
+        <label class="chk"><input id="s-regen" type="checkbox" /> 保存时重新生成指纹</label><p class="hint">已有网站可能会把它识别为新设备。</p>
+      </details>
+      <div id="settingsError" class="settings-error" role="alert" hidden></div>
+      <div class="ver-line"><span id="s-version">—</span></div>
     </div>
-    <label>时区</label>
-    <select id="s-timezone"></select>
-    <div class="hint">
-      默认「自动（跟随出口 IP）」。⚠️ 各检测站 GeoIP 库对同一 IP 可能判定不同<br />
-      （实测：whoer.com 判新泽西→纽约时区，yalala.com 判加州→洛杉矶时区），<br />
-      此时单一时区无法同时满足，可在此<b>手动指定</b>成目标站点期望的时区。
-    </div>
-    <div style="margin-top:6px;display:flex;gap:6px;">
-      <button class="btn ghost" id="s-tz-reset" type="button" style="height:30px;">↺ 恢复自动</button>
-    </div>
-    <label>起始网址</label>
-    <input id="s-start" type="text" placeholder="https://..." />
-    <label class="chk"><input id="s-proxyOn" type="checkbox" /> 启用代理</label>
-    <label>代理类型</label>
-    <select id="s-type"><option value="socks5">SOCKS5（默认）</option><option value="http">HTTP</option></select>
-    <label>一键粘贴解析（自动填入下方四项）</label>
-    <div style="display:flex;gap:6px;">
-      <input id="s-paste" type="text" placeholder="粘贴：host:port:user:pass" style="flex:1;" />
-      <button class="btn" id="s-paste-go" type="button" style="height:32px;">解析填入</button>
-    </div>
-    <label>代理地址（host:port）</label>
-    <input id="s-host" type="text" placeholder="例如 103.13.214.244:45001" />
-    <label>账号（可选）</label>
-    <input id="s-user" type="text" />
-    <label>密码（可选）</label>
-    <input id="s-pass" type="password" />
-    <div class="panel-actions">
-      <button id="s-check" class="btn">检测代理出口 IP</button>
-    </div>
-    <div id="s-check-result" class="check-result" hidden></div>
-    <label>WebRTC（影响 IP / DNS 泄漏）</label>
-    <select id="s-webrtc">
-      <option value="proxy">代理模式（只暴露代理 IP）</option>
-      <option value="disable">关闭（彻底无 WebRTC 泄漏）</option>
-    </select>
-    <div class="hint">DNS / IP 是网络出口层，JS 伪装改不了。需配置代理（推荐 SOCKS5，远程解析 DNS）才能真正隐藏中国 DNS；选「关闭」可消除 WebRTC 引起的 DNS 泄漏。</div>
-    <label>备注 / 账号说明</label>
-    <input id="s-note" type="text" placeholder="如：客户A的FB广告号" />
-    <label>标签（逗号分隔，便于筛选）</label>
-    <input id="s-tags" type="text" placeholder="如：FB, 广告, 重要" />
-    <label class="chk"><input id="s-regen" type="checkbox" /> 重新生成指纹</label>
-    <div class="panel-actions">
-      <button id="s-clear" class="btn">清除浏览数据</button>
-    </div>
-    <div class="panel-actions">
-      <button id="s-cookie-out" class="btn">备份 Cookie</button>
-      <button id="s-cookie-in" class="btn">恢复 Cookie</button>
-    </div>
-    <div class="panel-actions">
-      <button id="s-cancel" class="btn">取消</button>
-      <button id="s-save" class="btn primary">保存并应用</button>
-    </div>
-    <div class="ver-line">构建版本：<span id="s-version">—</span></div>
-    <label class="chk"><input id="s-telemetry" type="checkbox" checked /> 匿名使用统计（仅随机 ID + 版本/平台，帮助改进产品，可关闭）</label>
+    <div class="settings-footer"><button id="s-cancel" class="btn">取消</button><button id="s-save" class="btn primary">保存并应用</button></div>
   </div>
 
   <div id="launcher" class="panel launcher" hidden>
@@ -472,5 +444,6 @@
   <script src="browser-tabs.js"></script>
   <script src="browser-experience.js"></script>
   <script src="browser-shell.js"></script>
+<script src="browser-settings.js"></script>
 </body>
 </html>

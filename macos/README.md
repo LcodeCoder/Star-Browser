@@ -19,4 +19,6 @@ npm run test:package
 
 功能与已知边界见 docs/capabilities.md；实际测试记录见 docs/verification.md。安装包当前采用 ad hoc 签名。
 
-0.10.0 增加任务定义选定导出、JSON 导入预览与独立任务副本，包含 100 个任务/32 MB 校验、私有文件权限、取消和键盘返回；任务截图遇到暂时不可用表面可有限重试。原有 Chrome 多网页检查、标签与存储能力继续保留。范围和实际安装包验证见文档。
+0.11.0 完善内置浏览器环境设置：准确回填、代理检测预览、明确保存、失败可重试、任务保护、配置立即作用于新网页首脚本、浅深主题与键盘返回。原有任务定义复用、Chrome 多网页检查、标签和存储能力保留。20 次双环境休眠/唤醒验证没有累积 guest 数量；具体范围、测试证据和安装包见 docs/release-0.11.0.md。
+
+专项验证使用 `npm run test:browser-settings` 和 `node tests/tab-lifecycle.cjs`。

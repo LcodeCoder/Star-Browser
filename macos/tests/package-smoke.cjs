@@ -36,6 +36,19 @@ let app,origin;
   assert.deepEqual(nativeDate,{month:0,hour:21,offset:-540,utc:'UTC',invalid:true});
   const audit=await manager.evaluate(id=>window.api.fingerprintAudit(id),profile.id);assert.equal(audit.differences,0);assert.equal(audit.workerError,'');assert.equal(audit.rows.find(row=>row.context==='Worker'&&row.label==='时区').actual,'Asia/Tokyo');
   results.push({name:'打包应用原生日期语义与实际网页/Worker/CSS检查',status:'passed',detail:{nativeDate,rows:audit.rows.length,unknown:audit.unknown}});
+  await browser.locator('#gear').click();
+  assert.equal(await browser.locator('#s-start').inputValue(),'http://qa.local:'+origin.port+'/probe');
+  assert.equal(await browser.locator('#s-language').inputValue(),'ja-JP');
+  await browser.locator('#s-language').selectOption('en-GB');await browser.locator('#s-timezone').selectOption('Europe/London');await browser.locator('#s-save').click();await browser.locator('#settings').waitFor({state:'hidden'});
+  let settingsEarly;
+  for(let i=0;i<100&&!settingsEarly;i++){
+   settingsEarly=await app.evaluate(async({webContents},id)=>{const guest=webContents.getAllWebContents().find(w=>w.getType()==='webview'&&w.session.__tfbEnvId===id&&w.getURL().includes('/probe')&&!w.isLoading());return guest?guest.executeJavaScript('window.early'):null;},profile.id);
+   if(!settingsEarly)await new Promise(r=>setTimeout(r,100));
+  }
+  assert.equal(settingsEarly?.language,'en-GB');assert.equal(settingsEarly?.tz,'Europe/London');
+  results.push({name:'安装包内设置资源、准确回填与保存后首脚本生效',status:'passed',detail:settingsEarly});
+  await browser.locator('#gear').click();await browser.locator('#s-language').selectOption('ja-JP');await browser.locator('#s-timezone').selectOption('Asia/Tokyo');await browser.locator('#s-save').click();await browser.locator('#settings').waitFor({state:'hidden'});
+  await browser.waitForFunction(()=>activeTab()?.web?.__starReady&&!activeTab().web.isLoading()&&activeTab().web.getURL().includes('/probe'));
   const sourceTab=await browser.evaluate(()=>({id:activeId,guest:activeTab().web.getWebContentsId()}));
   await browser.evaluate(url=>createTab(url),'http://localhost:'+origin.port+'/sync');
   for(let i=0;i<100;i++){if(await browser.evaluate(()=>activeTab().web?.__starReady&&!activeTab().web.isLoading()&&activeTab().web.getURL().includes('/sync')))break;await new Promise(resolve=>setTimeout(resolve,50));}
@@ -88,7 +101,7 @@ let app,origin;
   const chromePid=await app.evaluate(({app},id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return require('./src/main/launcher').getLaunchedBrowser(id).child.pid;},profile.id);
   await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);assert.throws(()=>process.kill(chromePid,0),{code:'ESRCH'});
   results.push({name:'打包应用中的真实 Chrome 多标签选择检查与运行配置',status:'passed'});
-  console.log('Packaged macOS app: 11 checks passed.');
+  console.log(`Packaged macOS app: ${results.filter(row=>row.status==='passed').length} checks passed.`);
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
   if(app){await app.evaluate(async({app})=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json'),browsers=require('./src/main/launcher').getLaunchedBrowsers();await Promise.all(browsers.map(async([,running])=>{await running.pipe.send('Browser.close').catch(()=>running.child.kill());for(let i=0;i<150&&running.child.exitCode===null&&running.child.signalCode===null;i++)await new Promise(resolve=>setTimeout(resolve,30));if(running.child.exitCode===null&&running.child.signalCode===null)running.child.kill();}));}).catch(()=>{});await app.close().catch(()=>{});}
