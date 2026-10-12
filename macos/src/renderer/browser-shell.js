@@ -1078,18 +1078,16 @@ async function renderBookmarks() {
 
 // ---------------- Chrome 式收藏体验：书签栏 + 星标 + 新标签页 NTP ----------------
 
-// 工具：取站点 favicon（Google s2 服务；失败回落首字母色块）
+// Render a local site monogram; the browser shell never sends visited hosts
+// to an external favicon service outside the profile's network session.
 function faviconFor(url) {
-  try {
-    const u = new URL(url);
-    return (
-      "https://www.google.com/s2/favicons?domain=" +
-      encodeURIComponent(u.hostname) +
-      "&sz=32"
-    );
-  } catch (e) {
-    return "";
-  }
+  let host='';try{host=new URL(url).hostname.replace(/^www\./,'');}catch{}
+  const initial=(host.replace(/[^a-z0-9]/gi,'').charAt(0)||'S').toUpperCase();
+  let hash=0;for(const ch of host)hash=(hash*31+ch.charCodeAt(0))>>>0;
+  const colors=[['#e8f0fe','#1967d2'],['#e6f4ea','#137333'],['#fef7e0','#8d6500'],['#fce8e6','#b3261e'],['#f3e8fd','#762bb5']];
+  const [bg,fg]=colors[hash%colors.length];
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="11" fill="'+bg+'"/><text x="20" y="27" text-anchor="middle" fill="'+fg+'" font-family="Arial,sans-serif" font-size="21" font-weight="600">'+initial+'</text></svg>';
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
 }
 function letterAvatar(text) {
   const s = document.createElement("span");
@@ -1730,9 +1728,9 @@ function winTitle(pageTitle) {
 function refreshTitle(tabId) {
   const t = tabs.find((x) => x.id === tabId);
   if (!t) return;
-  let title = "";
+  let title = t.ntp ? "新标签" : "";
   try {
-    title = (t.web.getTitle && t.web.getTitle()) || "";
+    if (!t.ntp) title = (t.web.getTitle && t.web.getTitle()) || "";
   } catch (e) {}
   title = (title || "").trim();
   t.title = title || "新标签";

@@ -14,3 +14,16 @@
 AdsPower features 页面此次返回的内容不足以读取功能细节，不能把该抓取算作成功研究。初始能力分类还参考了产品帮助页的既有记录；本表只列此次实际取得可读内容的来源。
 
 完整功能的依赖不同：本地桌面可以实现环境隔离、代理接入、数据管理、扩展、批量操作和本地自动化；团队身份/权限、云同步、云浏览器、代理销售需要真实的远程基础设施。TLS/DNS、字体栈、Worker、WebGPU 等信号不能用页面 JavaScript 一次性替代。每一项以具体实现和实际测试为准。
+
+
+## 权限、下载与工作台组件补充
+
+2026-10-13 03:30（东八区）实际读取：
+
+- Electron Session：https://www.electronjs.org/docs/latest/api/session 。权限检查与请求处理需要一起设置；检查中返回允许会直接授予权限。用于修正“询问”流程。
+- Electron DownloadItem：https://www.electronjs.org/docs/latest/api/download-item 。读取暂停/继续、已接收字节与完成事件，用真实文件验证下载。
+- Aceternity Sidebar：https://ui.aceternity.com/components/sidebar 。评估其侧栏交互；Star 保持稳定宽度与显式操作，避免高频工作时悬停扩展推挤内容。
+- Origin UI：https://originui.com/ 。此次官方页面已转向 coss ui / Base UI；作为组件交互参考，当前继续使用已验证的 Radix 组件。
+- Octo 的 /en/extensions/ 返回 404，不能作为扩展功能的可读依据；后续通过官方目录查找有效页面。
+
+抓取与失败结果保存在 test-results/privacy-performance-research.json。

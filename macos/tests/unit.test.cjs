@@ -112,3 +112,34 @@ test('HTTPS、IPv6 和 URL 编码凭据正确解析，未知协议不会静默�
  assert.equal(buildProxyRules({type:'https',host:'::1',port:8443}),'https://[::1]:8443');
  assert.equal(parseProxyInput('ssh://localhost:22'),null);assert.equal(parseProxyInput('localhost:65536'),null);assert.equal(parseProxyInput('http://user:%GG@localhost:80'),null);assert.equal(parseProxyInput('localhost:8080:user:pa:ss').pass,'pa:ss');
 });
+
+
+test('一万环境批量持久化只提交一次，失败恢复索引与完整原数据',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-batch-'));
+ try{
+  const store=new Store(dir),revision=store.revision();
+  const created=store.transaction(()=>Array.from({length:10000},(_,i)=>store.create({name:'Scale '+i,tags:['qa']})));
+  assert.equal(store.revision(),revision+1);assert.equal(new Store(dir).list().length,10000);
+  const original=fs.readFileSync(store.file,'utf8'),failedRevision=store.revision();
+  assert.throws(()=>store.transaction(()=>{store.update(created[0].id,{name:'Should roll back'});store.remove(created[1].id);store.create({name:'Temporary'});store.create({timezone:'Invalid/Zone'});}),/时区/);
+  assert.equal(store.revision(),failedRevision);assert.equal(fs.readFileSync(store.file,'utf8'),original);assert.equal(store.get(created[0].id).name,'Scale 0');assert.ok(store.get(created[1].id));assert.equal(store.list().length,10000);
+  store.update(created[0].id,{note:'After rollback'});assert.equal(new Store(dir).get(created[0].id).note,'After rollback');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('批量提交遇到磁盘失败不会污染已保存数据',(t)=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-disk-failure-'));
+ try{
+  const store=new Store(dir),p=store.create({name:'Safe'}),before=fs.readFileSync(store.file,'utf8');
+  const rename=t.mock.method(fs,'renameSync',()=>{throw new Error('QA disk full');});
+  assert.throws(()=>store.transaction(()=>store.update(p.id,{name:'Unsaved'})),/disk full/);
+  rename.mock.restore();assert.equal(store.get(p.id).name,'Safe');assert.equal(fs.readFileSync(store.file,'utf8'),before);
+  store.update(p.id,{note:'Still usable'});assert.equal(new Store(dir).get(p.id).note,'Still usable');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('重启将未完成下载标记中断，已完成文件记录保持原状态',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-download-state-'));
+ try{const store=new Store(dir);store.saveDownload({id:'active',state:'progressing',received:10});store.saveDownload({id:'paused',state:'paused',received:20});store.saveDownload({id:'done',state:'completed',path:'/tmp/qa'});const reopened=new Store(dir);assert.deepEqual(reopened.downloads().map(d=>[d.id,d.state]),[['done','completed'],['paused','interrupted'],['active','interrupted']]);assert.equal(new Store(dir).downloads().find(d=>d.id==='active').state,'interrupted');}
+ finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

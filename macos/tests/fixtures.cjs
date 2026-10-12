@@ -26,6 +26,12 @@ async function startOrigin() {
   const requests = [];
   const fixture = await listen(http.createServer((req, res) => {
     requests.push({url: req.url, headers: req.headers});
+    if (req.url.startsWith('/download')) {
+      const total=4*1024*1024,chunk=Buffer.alloc(64*1024,0x53);let sent=0;
+      res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="star-qa.bin"','Content-Length':total,'Accept-Ranges':'bytes'});
+      const timer=setInterval(()=>{if(sent>=total){clearInterval(timer);res.end();return;}res.write(chunk);sent+=chunk.length;},40);
+      res.once('close',()=>clearInterval(timer));return;
+    }
     if (req.url.startsWith('/geo')) {
       res.writeHead(200,{'Content-Type':'application/json'});
       res.end(JSON.stringify({status:'success',ip:'8.8.8.8',query:'8.8.8.8',country:'Japan',country_name:'Japan',country_code:'JP',countryCode:'JP',timezone:'Asia/Tokyo',time_zone:'Asia/Tokyo',offset:32400,city:'Tokyo',region:'Tokyo',regionName:'Tokyo',org:'AS64500 QA',isp:'QA',as:'AS64500 QA',hosting:false,proxy:false,mobile:false}));

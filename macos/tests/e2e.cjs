@@ -108,6 +108,23 @@ async function createProfile(name,proxy=null){
    assert.equal(early.platform,'MacIntel');assert.equal(early.language,'ja-JP');assert.equal(early.tz,'Asia/Tokyo');assert.equal(early.ua,preview.userAgent);assert.equal(early.width,preview.screen.width);assert.equal(early.cores,preview.hardwareConcurrency);assert.equal(early.webdriver,false);
    await browser.screenshot({path:path.join(output,'browser.png')});return early;
   });
+  await check('真实文件下载、暂停继续、完整字节与取消闭环',async()=>{
+   const file=path.join(data,'star-download.bin');
+   const prepare=async file=>app.evaluate(({session},{id,file})=>{session.fromPartition('persist:tfb-env-'+id).once('will-download',(e,item)=>item.setSavePath(file));},{id:primary.id,file});
+   await prepare(file);
+   await guestEval(firstGuest,"const a=document.createElement('a');a.href='/download?complete=1';document.body.append(a);a.click();true");
+   const row=await until(async()=>(await api('snapshot')).downloads.find(d=>d.profileId===primary.id));
+   await manager.locator('#navDownloads').click();const item=manager.locator('[data-download-id="'+row.id+'"]');
+   await item.getByRole('button',{name:'暂停下载',exact:true}).click();await until(async()=>(await api('snapshot')).downloads.find(d=>d.id===row.id)?.state==='paused');
+   await item.getByRole('button',{name:'继续下载',exact:true}).click();
+   const completed=await until(async()=>(await api('snapshot')).downloads.find(d=>d.id===row.id&&d.state==='completed'));
+   assert.equal(completed.received,4*1024*1024);assert.equal(fs.statSync(file).size,4*1024*1024);assert.equal(fs.readFileSync(file).every(byte=>byte===0x53),true);
+   await prepare(path.join(data,'star-cancelled.bin'));await guestEval(firstGuest,"const b=document.createElement('a');b.href='/download?cancel=1';document.body.append(b);b.click();true");
+   const cancelled=await until(async()=>(await api('snapshot')).downloads.find(d=>d.id!==row.id&&d.profileId===primary.id));
+   await until(async()=>{await manager.evaluate(()=>document.querySelector('#navDownloads').click());return manager.locator('[data-download-id="'+cancelled.id+'"]');});
+   await api('downloadAction',cancelled.id,'cancel');await until(async()=>(await api('snapshot')).downloads.find(d=>d.id===cancelled.id)?.state==='cancelled');
+   await manager.screenshot({path:path.join(output,'downloads.png')});await manager.locator('#navEnv').click();
+  });
   await check('Cookie 和 localStorage 在不同环境之间隔离',async()=>{
    await guestEval(firstGuest,"document.cookie='sessionQA=first; path=/; max-age=3600'; localStorage.setItem('qa','first'); true");
    second=await createProfile('隔离环境 B');await api('browse',second.id);const other=await guestFor(second.id);
@@ -139,7 +156,7 @@ async function createProfile(name,proxy=null){
   await check('标签会话恢复、页内查找、关闭恢复、缩放与历史',async()=>{
    const next=app.waitForEvent('window');await api('browse',primary.id);const browser=await next;await guestFor(primary.id,'/popup');
    assert.ok(await browser.locator('#tabs [role="tab"]').count()>=2);await browser.locator('#addr').click();await browser.keyboard.press('Meta+f');await browser.locator('#findInput').waitFor();await browser.locator('#findInput').fill('macOS');await until(async()=>/\d+ \/ \d+/.test(await browser.locator('#findResult').textContent()));await browser.locator('#findClose').click();
-   await browser.locator('#addr').click();await browser.keyboard.press('Meta+t');await browser.locator('#ntp').waitFor({state:'visible'});await browser.screenshot({path:path.join(output,'browser-new-tab.png')});const count=await browser.locator('#tabs > *').count();await browser.keyboard.press('Meta+w');await until(async()=>(await browser.locator('#tabs > *').count())===count-1);await browser.keyboard.press('Meta+Shift+t');await until(async()=>(await browser.locator('#tabs > *').count())===count);
+   await browser.locator('#addr').click();await browser.keyboard.press('Meta+t');await browser.locator('#ntp').waitFor({state:'visible'});await until(async()=>(await browser.locator('#tabs [role="tab"][aria-selected="true"]').textContent()).includes('新标签'));assert.ok((await browser.locator('#ntp img').evaluateAll(images=>images.map(img=>img.src))).every(src=>src.startsWith('data:')||src.startsWith('file:')));await browser.screenshot({path:path.join(output,'browser-new-tab.png')});const count=await browser.locator('#tabs > *').count();await browser.keyboard.press('Meta+w');await until(async()=>(await browser.locator('#tabs > *').count())===count-1);await browser.keyboard.press('Meta+Shift+t');await until(async()=>(await browser.locator('#tabs > *').count())===count);
    await browser.locator('#browserMenuBtn').click();await browser.locator('[data-command="zoom-in"]').click();assert.equal(await browser.locator('#zoomValue').textContent(),'110%');await browser.locator('[data-command="zoom-reset"]').click();assert.equal(await browser.locator('#zoomValue').textContent(),'100%');await browser.locator('#browserMenuBtn').click();
    await browser.locator('#tabSearchBtn').click();await browser.locator('#tabSearchInput').fill('macOS');await browser.locator('.tab-search-item').first().click();
    await browser.locator('#historyBtn').click();await until(async()=>(await browser.locator('.history-item').count())>0);assert.ok((await api('historyList',primary.id)).some(r=>r.url.includes('/probe')));assert.ok(!(await api('historyList',second.id)).some(r=>r.url.includes('/popup')));

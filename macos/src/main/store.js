@@ -6,6 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { EventEmitter } = require("node:events");
 const { validateProfile, validateProxy } = require("./profile-validation");
 
 // 默认收藏夹（首次运行时写入；之后用户可自由增删，不影响已存环境）
@@ -14,12 +15,16 @@ const DEFAULT_BOOKMARKS = [
   { title: "BrowserLeaks", url: "https://browserleaks.com" },
 ];
 
-class Store {
+class Store extends EventEmitter {
   constructor(userDataDir) {
+    super();
     this.dir = userDataDir;
     this.file = path.join(userDataDir, "profiles.json");
     this._data = { profiles: [], updatedAt: 0 };
+    this._revision = 0;
+    this._transaction = null;
     this._load();
+    this._profilesById = new Map(this._data.profiles.map(p => [p.id, p]));
     this._data.proxies ||= [];
     this._data.activity ||= [];
     this._data.downloads ||= [];
@@ -40,6 +45,8 @@ class Store {
     // 最常访问记录（驱动 New Tab 快捷入口，自动适应用户习惯）
     if (!this._data.visits || typeof this._data.visits !== "object")
       this._data.visits = {};
+    const interrupted = this._data.downloads.filter(d => ["progressing","paused"].includes(d.state));
+    if (interrupted.length) { for (const d of interrupted) d.state = "interrupted"; this._save(); }
   }
 
   _load() {
@@ -61,6 +68,7 @@ class Store {
   }
 
   _save() {
+    if (this._transaction) { this._transaction.dirty = true; return; }
     clearTimeout(this._saveTimer);
     this._saveTimer = null;
     this._data.updatedAt = Date.now();
@@ -68,8 +76,34 @@ class Store {
     const temporary = this.file + ".tmp";
     fs.writeFileSync(temporary, JSON.stringify(this._data, null, 2), { encoding: "utf-8", mode: 0o600 });
     if (!this._recovered && fs.existsSync(this.file)) fs.copyFileSync(this.file, this.file + ".bak");
-    this._recovered = false;
     fs.renameSync(temporary, this.file);
+    this._recovered = false;
+    this._revision++;
+    this.emit("changed", this._revision);
+  }
+
+  revision() { return this._revision; }
+
+  // A synchronous batch validates and mutates in memory, then writes once.
+  // Failure restores both the persisted model and its lookup index.
+  transaction(run) {
+    if (this._transaction) return run();
+    const previous = structuredClone(this._data), revision = this._revision;
+    this._transaction = { dirty: false };
+    try {
+      const result = run();
+      if (result && typeof result.then === "function") throw new Error("批量存储操作必须同步执行");
+      const dirty = this._transaction.dirty;
+      this._transaction = null;
+      if (dirty) this._save();
+      return result;
+    } catch (error) {
+      this._transaction = null;
+      this._data = previous;
+      this._revision = revision;
+      this._profilesById = new Map(this._data.profiles.map(p => [p.id, p]));
+      throw error;
+    }
   }
 
   flush() { if (this._saveTimer) this._save(); }
@@ -79,7 +113,7 @@ class Store {
   }
 
   get(id) {
-    return this._data.profiles.find((p) => p.id === id);
+    return this._profilesById.get(id);
   }
 
   create(partial) {
@@ -112,6 +146,7 @@ class Store {
       lastOpenedAt: 0,
     };
     this._data.profiles.push(profile);
+    this._profilesById.set(id, profile);
     this._save();
     return profile;
   }
@@ -128,6 +163,7 @@ class Store {
     const idx = this._data.profiles.findIndex((p) => p.id === id);
     if (idx >= 0) {
       this._data.profiles.splice(idx, 1);
+      this._profilesById.delete(id);
       delete this._data.history[id];
       this._save();
       return true;

@@ -216,4 +216,4 @@ async function launchProfile(profile, paths, fingerprint) {
 
 }
 
-module.exports = { launchProfile, findChrome, getLaunchedBrowser: id => launchedBrowsers.get(id) };
+module.exports = { launchProfile, findChrome, getLaunchedBrowser: id => launchedBrowsers.get(id), getLaunchedBrowsers: () => [...launchedBrowsers.entries()] };

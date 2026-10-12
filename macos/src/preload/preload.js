@@ -68,7 +68,7 @@ contextBridge.exposeInMainWorld("api", {
   onToast: (cb) => subscribe("tfb:toast", cb),
   // 当前构建版本号（客户端用于辨认是否为最新包）
   version: () => "star-2026-10-12",
-  snapshot: () => ipcRenderer.invoke("star:snapshot"),
+  snapshot: (token) => ipcRenderer.invoke("star:snapshot", token),
   action: (action, ids, patch) => ipcRenderer.invoke("star:action", action, ids, patch),
   exportProfiles: ids => ipcRenderer.invoke("star:export", ids),
   importPreview: () => ipcRenderer.invoke("star:importPreview"),
@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld("api", {
   onBrowserCommand: cb => subscribe("star:browserCommand", cb),
   onPreferences: cb => subscribe("star:preferencesChanged", cb),
   onNavigate: cb => subscribe("star:navigate", cb),
+  onWorkspaceChanged: cb => subscribe("star:invalidate", cb),
   openWorkbench: page => ipcRenderer.invoke("star:openWorkbench", page),
   historyRecord: (id,url,title) => ipcRenderer.invoke("star:historyRecord",id,url,title),
   historyList: id => ipcRenderer.invoke("star:historyList",id),

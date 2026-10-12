@@ -22,15 +22,17 @@ class ErrorBoundary extends React.Component {
 }
 function App() {
   const [snapshot, setSnapshot] = useState(null), [loadError, setLoadError] = useState(""), [page, setPage] = useState("environments"), [filter, setFilter] = useState("all"), [group, setGroup] = useState(""), [query, setQuery] = useState(""), [tag, setTag] = useState(""), [sort, setSort] = useState("recent"), [selected, setSelected] = useState(/* @__PURE__ */ new Set()), [detail, setDetail] = useState(null), [editor, setEditor] = useState(void 0), [toast, setToast] = useState(null), [confirmState, setConfirm] = useState(null), [confirmBusy, setConfirmBusy] = useState(false), [commands, setCommands] = useState(false), [busy, setBusy] = useState(/* @__PURE__ */ new Set()), [batch, setBatch] = useState(null), [importState, setImport] = useState(null), [importBusy, setImportBusy] = useState(false), [offline, setOffline] = useState(!navigator.onLine), [offset, setOffset] = useState(0);
+  const [commandQuery, setCommandQuery] = useState("");
+  const snapshotRef = useRef(null), snapshotToken = useRef(null);
   const fetchId = useRef(0), toastTimer = useRef(null), searchRef = useRef(null), refreshing = useRef(false);
   const refresh = useCallback(async () => {
     const id = ++fetchId.current;
-    const result = await window.api.snapshot();
+    const result = await window.api.snapshot(snapshotToken.current);
     if (id === fetchId.current) {
-      setSnapshot(result);
+      if (!result.unchanged) { snapshotToken.current = result.token; snapshotRef.current = result; setSnapshot(result); }
       setLoadError("");
     }
-    return result;
+    return result.unchanged ? snapshotRef.current : result;
   }, []);
   const notify = useCallback((message, status = "success") => {
     if (!message) return;
@@ -56,6 +58,9 @@ function App() {
       return;
     }
     refresh().catch((e) => setLoadError(messageOf(e)));
+    const onChange = () => { if (!document.hidden) refresh().catch(e => setLoadError(messageOf(e))); };
+    const offChanged = window.api.onWorkspaceChanged(onChange);
+    document.addEventListener("visibilitychange", onChange);
     const timer = setInterval(() => {
       if (document.hidden || refreshing.current) return;
       refreshing.current = true;
@@ -63,6 +68,8 @@ function App() {
     }, 5e3);
     return () => {
       clearInterval(timer);
+      offChanged?.();
+      document.removeEventListener("visibilitychange", onChange);
       clearTimeout(toastTimer.current);
     };
   }, [refresh]);
@@ -204,6 +211,11 @@ function App() {
       setImportBusy(false);
     }
   };
+  useEffect(() => { if (commands) setCommandQuery(""); }, [commands]);
+  const commandProfiles = useMemo(() => {
+    const terms = commandQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    return (snapshot?.profiles || []).filter(p => !p.archived && terms.every(term => [p.name,p.group,p.id,p.note,...(p.tags || [])].join(" ").toLowerCase().includes(term))).slice(0,200);
+  }, [snapshot?.profiles, commandQuery]);
   const context = { snapshot, refresh, notify, execute, openProfile, confirm: setConfirm };
   if (!snapshot) return <div className="startup"><Logo /><h1>Star Browser</h1>{loadError ? <><p className="inline-error" role="alert">{loadError}</p><Button onClick={() => refresh().catch((e) => setLoadError(messageOf(e)))} icon={RefreshCw}>重新加载</Button></> : <p><LoaderCircle className="spin" size={17} />正在准备你的工作台…</p>}</div>;
   const activeProfiles = snapshot.profiles.filter((p) => !p.archived);
@@ -252,10 +264,10 @@ function App() {
     if (r) setImport(null);
     setImportBusy(false);
   }}>导入 {importState?.count || 0} 个环境</Button></>}><div className="import-preview">{importState?.profiles.slice(0, 30).map((p, i) => <div key={i}><strong>{p.name}</strong><span>{osName(p.os || "mac")} · {p.group || "默认分组"}</span></div>)}{importState?.count > 30 && <p className="muted">另有 {importState.count - 30} 个环境</p>}</div></Modal>
- <Modal open={commands} onOpenChange={setCommands} title="搜索与快速操作" description="搜索环境名称，或选择常用操作。"><Command className="command-palette" label="快速操作"><Command.Input autoFocus placeholder="输入环境名或操作…" /><Command.List><Command.Empty>没有找到匹配的环境或操作。</Command.Empty><Command.Group heading="快速操作">{[["新建环境", Plus, () => setEditor(null)], ["代理库", Network, () => navigate("proxies")], ["设置", Settings2, () => navigate("settings")], ["导入环境", Upload, importPreview]].map(([label, Icon, action]) => <Command.Item key={label} onSelect={() => {
+ <Modal open={commands} onOpenChange={setCommands} title="搜索与快速操作" description="搜索环境名称，或选择常用操作。"><Command className="command-palette" label="快速操作" filter={(value, search) => search.toLowerCase().trim().split(/\s+/).every(term => value.toLowerCase().includes(term)) ? 1 : 0}><Command.Input autoFocus value={commandQuery} onValueChange={setCommandQuery} placeholder="输入环境名、标签或操作…" /><Command.List><Command.Empty>没有找到匹配的环境或操作。</Command.Empty><Command.Group heading="快速操作">{[["新建环境", Plus, () => setEditor(null)], ["代理库", Network, () => navigate("proxies")], ["设置", Settings2, () => navigate("settings")], ["导入环境", Upload, importPreview]].map(([label, Icon, action]) => <Command.Item key={label} onSelect={() => {
     setCommands(false);
     action();
-  }}><Icon size={17} />{label}</Command.Item>)}</Command.Group><Command.Group heading="浏览环境">{snapshot.profiles.filter((p) => !p.archived).slice(0, 200).map((p) => <Command.Item value={p.name + " " + p.group + " " + p.id} key={p.id} onSelect={() => {
+  }}><Icon size={17} />{label}</Command.Item>)}</Command.Group><Command.Group heading="浏览环境">{commandProfiles.map((p) => <Command.Item value={[p.name,p.group,p.id,p.note,...(p.tags || [])].join(" ")} key={p.id} onSelect={() => {
     setCommands(false);
     navigate("environments");
     setDetail(p.id);
