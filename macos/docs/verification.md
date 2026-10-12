@@ -126,3 +126,16 @@
 - 重新构建的实际 0.8.0 安装包通过完整签名校验、isPackaged 启动、资源与 preload、标签实际休眠/唤醒、Cookie/API、加密备份、同步生命周期与任务截图。打包检查完成于 UTC 2026-10-12 22:04:31。
 
 证据：test-results/star-0.8.0/；安装包 dist/Star-Browser-0.8.0-mac-arm64.dmg、.zip，应用 dist/mac-arm64/Star Browser.app。签名为 ad hoc，未 Apple Developer ID 公证，Intel 未本机验证。网站状态保护为保守可观察检查，休眠触发重新载入；未测量并宣称固定内存节省量。此前大规模工作台、权限、扩展及独立 API 专项结果见 0.7.0 记录，本轮没有把旧运行时间改写为新验证。
+
+
+## 本机 Chrome 多网页检查与进程关闭 0.9.0
+
+2026/10/13 06:17（东八区）：24 项单元、8 项标签、15 项指纹专项、24 项 Electron/Chrome 回归和 10 项实际打包检查通过。原始 21 文件与 30 项 JS 语法继续校验。
+
+- 实际 Chrome 155 两个 HTTP 网页分别按 targetId 检查；不选择时要求明确选择，非本环境网页标识拒绝。返回地址不含查询参数。
+- 工作台真实选择、复制检查结果、浅深主题；已关闭网页显示错误，刷新后恢复；全部网页切换为 about:blank 时显示准确空状态，打开网页后恢复检查。
+- 当前配置与已启动 Chrome 的真实内核版本和 User-Agent 完全相同。
+- Chrome 停止后验证主 PID 已不存在，立即重开同环境成功。测试新增独立 Chrome 后曾遇到清理目录 ENOTEMPTY；修复测试的独立 Chrome 生命周期清理，同时加强实际停止操作等待进程退出；重新打包与测试完成，不将失败运行计为通过。
+- 0.9.0 实际安装包通过新增 Chrome 多网页检查与运行配置，以及原有签名、启动、资源、标签、Cookie/API、备份、同步与任务检查；完成时间 2026-10-12T22:15:27.392Z。
+
+证据：test-results/star-0.9.0/；安装包 dist/Star-Browser-0.9.0-mac-arm64.dmg、.zip，应用 dist/mac-arm64/Star Browser.app。ad hoc 签名、Developer ID/Intel/公网供应商测试边界继续保留。

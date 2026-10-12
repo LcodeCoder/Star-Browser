@@ -19,12 +19,25 @@ async function auditElectron(wc){
  if(value.exceptionDetails||!value.result?.value)throw new Error('网页检查失败，请重新加载后重试');
  return report(fp,value.result.value,{engine:'内置 Chromium '+process.versions.chrome,url:wc.getURL(),zoom:wc.getZoomFactor(),targetErrors:wc.__starTargetErrors});
 }
-async function auditChrome(running){
- const {targetInfos}=await running.pipe.send('Target.getTargets');const pages=targetInfos.filter(t=>t.type==='page'&&/^https?:/.test(t.url));
- if(pages.length!==1)throw new Error(pages.length?'本机 Chrome 有多个网页，请保留一个标签后检查':'在本机 Chrome 打开一个 HTTP 或 HTTPS 网页后再检查');
- const target=pages[0],attached=running.pageSessions.get(target.targetId);if(!attached)throw new Error('本机 Chrome 页面未就绪，请稍后重试');await attached.ready;
+function cleanUrl(url){try{const clean=new URL(url);return clean.origin+clean.pathname;}catch{return '';}}
+async function chromeTargets(running){
+ if(!running||running.pipe.closed)throw new Error('这个环境的本机 Chrome 已停止，请重新启动');
+ const {targetInfos}=await running.pipe.send('Target.getTargets');return targetInfos.filter(t=>t.type==='page'&&/^https?:/.test(t.url));
+}
+async function chromePages(running){return (await chromeTargets(running)).map(target=>({id:target.targetId,title:target.title||'未命名网页',url:cleanUrl(target.url)}));}
+async function auditChrome(running,targetId){
+ const pages=await chromeTargets(running);
+ if(!pages.length)throw new Error('在本机 Chrome 打开一个 HTTP 或 HTTPS 网页后再检查');
+ if(targetId!==undefined&&(typeof targetId!=='string'||targetId.length>160))throw new Error('网页标识无效，请刷新网页列表');
+ const target=targetId?pages.find(page=>page.targetId===targetId):pages.length===1?pages[0]:null;
+ if(!target)throw new Error(targetId?'所选网页已关闭或不再可检查，请刷新网页列表':'请选择要检查的网页');
+ const attached=running.pageSessions.get(target.targetId);if(!attached)throw new Error('本机 Chrome 页面未就绪，请稍后重试');await attached.ready;
+ const state=await running.pipe.send('Runtime.evaluate',{expression:'document.readyState',returnByValue:true},attached.sessionId);
+ if(state.result?.value!=='complete')throw new Error('所选网页仍在加载，请完成后再检查');
  const result=await running.pipe.send('Runtime.evaluate',{expression:readSource(running.fingerprint),returnByValue:true,awaitPromise:true,timeout:7000},attached.sessionId);
  if(result.exceptionDetails||!result.result?.value)throw new Error('本机 Chrome 网页检查失败，请重新加载后重试');
- return report(running.fingerprint,result.result.value,{engine:'本机 Chrome '+running.fingerprint.chromeVersion,url:target.url,zoom:result.result.value.page.dpr/running.fingerprint.devicePixelRatio,targetErrors:running.targetErrors||[]});
+ const current=await running.pipe.send('Target.getTargetInfo',{targetId:target.targetId});
+ if(current.targetInfo.url!==target.url)throw new Error('所选网页在检查期间跳转，请重新检查');
+ return {...report(running.fingerprint,result.result.value,{engine:'本机 Chrome '+running.fingerprint.chromeVersion,url:target.url,zoom:result.result.value.page.dpr/running.fingerprint.devicePixelRatio,targetErrors:running.targetErrors||[]}),targetId:target.targetId,title:current.targetInfo.title||'未命名网页'};
 }
-module.exports={readSource,report,auditElectron,auditChrome};
+module.exports={readSource,report,auditElectron,auditChrome,chromePages};

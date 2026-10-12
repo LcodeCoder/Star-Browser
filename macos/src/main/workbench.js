@@ -56,7 +56,8 @@ function registerWorkbench(store,{commands,starting}={}) {
   ipcMain.handle('star:syncPause',(e,value)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile&&!([synchronizer.status().master,...synchronizer.status().followers].includes(w._profile.id)))throw new Error('此环境未参与同步');return synchronizer.pause(value);});
   ipcMain.handle('star:syncStop',()=>synchronizer.stop());
   ipcMain.handle('star:syncTile',e=>{managerOnly(e);return synchronizer.tile();});
-  ipcMain.handle('star:fingerprintAudit',async(e,id)=>{managerOnly(e);const current=synchronizer.activeGuest(id);if(current)return require('./fingerprint-audit').auditElectron(current.wc);const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return require('./fingerprint-audit').auditChrome(chrome);throw new Error('请先启动这个环境并打开网页');});
+  ipcMain.handle('star:fingerprintPages',async(e,id)=>{managerOnly(e);const current=synchronizer.activeGuest(id);if(current)return {engine:'electron',pages:[]};const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return {engine:'chrome',pages:await require('./fingerprint-audit').chromePages(chrome)};throw new Error('请先启动这个环境并打开网页');});
+  ipcMain.handle('star:fingerprintAudit',async(e,id,targetId)=>{managerOnly(e);const current=synchronizer.activeGuest(id);if(current){if(targetId)throw new Error('浏览器已切换，请刷新后重新检查');return require('./fingerprint-audit').auditElectron(current.wc);}const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return require('./fingerprint-audit').auditChrome(chrome,targetId);throw new Error('请先启动这个环境并打开网页');});
   const tasks=new (require('./automation-tasks').AutomationTasks)({app,store,commands,synchronizer});
   ipcMain.handle('star:taskSave',(e,input)=>{managerOnly(e);return tasks.save(input);});
   ipcMain.handle('star:taskRemove',(e,id)=>{managerOnly(e);return tasks.remove(id);});
@@ -94,9 +95,10 @@ function registerWorkbench(store,{commands,starting}={}) {
       if(action==='stop'){
         for(const w of BrowserWindow.getAllWindows())if(w._profile?.id===id)w.close();
         const running=getLaunchedBrowser(id);if(running&&!running.pipe.closed)await running.pipe.send('Browser.close').catch(()=>running.child.kill());
+        const chromeClosing=()=>running&&running.child.exitCode===null&&running.child.signalCode===null;
         const deadline=Date.now()+5000;
-        while(Date.now()<deadline&&(BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.id===id)||(getLaunchedBrowser(id)&&!getLaunchedBrowser(id).pipe.closed)))await new Promise(resolve=>setTimeout(resolve,30));
-        if(BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.id===id)||(getLaunchedBrowser(id)&&!getLaunchedBrowser(id).pipe.closed))throw new Error('浏览器仍在关闭，请稍后重试');
+        while(Date.now()<deadline&&(BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.id===id)||chromeClosing()))await new Promise(resolve=>setTimeout(resolve,30));
+        if(BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.id===id)||chromeClosing())throw new Error('浏览器仍在关闭，请稍后重试');
       }else{
         const w=BrowserWindow.getAllWindows().find(w=>!w._starClosing&&w._profile?.id===id);
         if(w){if(w.isMinimized())w.restore();w.show();w.focus();}

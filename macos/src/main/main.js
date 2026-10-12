@@ -13,7 +13,7 @@ const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const { Store } = require("./store");
-const { launchProfile, findChrome } = require("./launcher");
+const { launchProfile, findChrome, getLaunchedBrowser } = require("./launcher");
 const {
   generateFingerprint,
   resolveGeo,
@@ -928,6 +928,9 @@ function registerIpc() {
   registerProfileCommand("preview", async (e, id) => {
     const p = store.get(id);
     if (!p) return null;
+    const internal=BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&!w._starClosing&&w._profile?.id===id);
+    if(internal&&fpCache.has(id))return fpCache.get(id);
+    const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return chrome.fingerprint;
     try {
       const r = await resolveAlignedFingerprint(p);
       return r.fingerprint;

@@ -74,12 +74,22 @@ let app,origin;
   for(let i=0;i<150;i++){taskResult=(await manager.evaluate(()=>window.api.snapshot())).taskRuns.find(run=>run.id===taskRun.id);if(['completed','failed'].includes(taskResult?.state))break;await new Promise(resolve=>setTimeout(resolve,50));}
   assert.equal(taskResult?.state,'completed',taskResult?.error);assert.equal(taskResult.outputs.length,1);assert.deepEqual([...fs.readFileSync(taskResult.outputs[0].path).subarray(0,8)],[137,80,78,71,13,10,26,10]);
   results.push({name:'打包应用中的实际任务执行与截图',status:'passed'});
-  console.log('Packaged macOS app: 9 checks passed.');
+  await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);await manager.evaluate(id=>window.api.launch(id),profile.id);
+  const chromeVersion=await app.evaluate(({app} ,id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return require('./src/main/launcher').getLaunchedBrowser(id).fingerprint.chromeVersion;},profile.id);
+  assert.equal((await manager.evaluate(id=>window.api.preview(id),profile.id)).chromeVersion,chromeVersion);
+  const secondChromeTab=await app.evaluate(async({app},{id,url})=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return (await require('./src/main/launcher').getLaunchedBrowser(id).pipe.send('Target.createTarget',{url})).targetId;},{id:profile.id,url:'http://localhost:'+origin.port+'/sync?private=package'});
+  let chromeAudit;for(let i=0;i<100;i++){try{chromeAudit=await manager.evaluate(({id,target})=>window.api.fingerprintAudit(id,target),{id:profile.id,target:secondChromeTab});break;}catch(error){if(!/未就绪|仍在加载/.test(error.message))throw error;await new Promise(resolve=>setTimeout(resolve,50));}}
+  assert.ok(chromeAudit);assert.equal(chromeAudit.targetId,secondChromeTab);assert.ok(chromeAudit.url.endsWith('/sync'));assert.equal(chromeAudit.differences,0);
+  assert.equal((await manager.evaluate(id=>window.api.fingerprintPages(id),profile.id)).pages.length,2);
+  const chromePid=await app.evaluate(({app},id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return require('./src/main/launcher').getLaunchedBrowser(id).child.pid;},profile.id);
+  await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);assert.throws(()=>process.kill(chromePid,0),{code:'ESRCH'});
+  results.push({name:'打包应用中的真实 Chrome 多标签选择检查与运行配置',status:'passed'});
+  console.log('Packaged macOS app: 10 checks passed.');
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
-  if(app)await app.close().catch(()=>{});
+  if(app){await app.evaluate(async({app})=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json'),browsers=require('./src/main/launcher').getLaunchedBrowsers();await Promise.all(browsers.map(async([,running])=>{await running.pipe.send('Browser.close').catch(()=>running.child.kill());for(let i=0;i<150&&running.child.exitCode===null&&running.child.signalCode===null;i++)await new Promise(resolve=>setTimeout(resolve,30));if(running.child.exitCode===null&&running.child.signalCode===null)running.child.kill();}));}).catch(()=>{});await app.close().catch(()=>{});}
   if(origin)await origin.close();
-  fs.rmSync(data,{recursive:true,force:true});
+  fs.rmSync(data,{recursive:true,force:true,maxRetries:5,retryDelay:100});
   fs.writeFileSync(path.join(root,'test-results/package-smoke.json'),JSON.stringify({status:process.exitCode?'failed':'passed',testedAt:new Date().toISOString(),results},null,2)+'\n');
  }
 })();

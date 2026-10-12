@@ -75,3 +75,8 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 - Electron WebContents：https://www.electronjs.org/docs/latest/api/web-contents — close/destroyed 用于验证实际网页生命周期；文档说明 BrowserView 的 beforeunload 生命周期有特殊限制。实际内嵌 guest 测试据此采取关闭前原生监听器检查，不能仅依赖 will-prevent-unload 来保护网页。did-stop-loading 用于下载导航取消后恢复就绪。
 
 访问日期：2026-10-12。具体实现及 8 项标签专项、9 项安装包证据见 verification.md。
+
+
+## 多标签真实检查（0.9.0）
+
+CDP Target/Runtime 官方协议：https://chromedevtools.github.io/devtools-protocol/tot/Target/ 、https://chromedevtools.github.io/devtools-protocol/tot/Runtime/ 。使用 Target.getTargets/getTargetInfo 与已有页面 sessionId 读取指定网页，不推测哪个 Chrome 窗口处于前台。检查使用 Runtime.evaluate 读取当前网页。访问日期：2026-10-12；本机协议与真实 Chrome 测试共同确认行为。
