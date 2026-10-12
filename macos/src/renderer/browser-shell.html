@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>指纹浏览器</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; display: flex; flex-direction: column;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #0f1320; color: #e6e6e6; }
+
+    /* ===== 标签栏 ===== */
+    .tabs-bar {
+      display: flex; align-items: flex-end; gap: 2px;
+      padding: 6px 8px 0; background: #1a1e28; min-height: 36px;
+      overflow-x: auto; overflow-y: hidden; user-select: none; flex: none;
+    }
+    .tab {
+      display: flex; align-items: center; gap: 8px; min-width: 120px; max-width: 220px;
+      height: 30px; padding: 0 10px; background: #2a2f3c; border-radius: 8px 8px 0 0;
+      cursor: pointer; color: #b9c2d0; font-size: 12px;
+      border: 1px solid transparent;
+    }
+    .tab.active { background: #0f1320; color: #fff; border-color: #2a2f3c; }
+    .tab:hover:not(.active) { background: #353c4b; }
+    .tab .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tab .close { width: 18px; height: 18px; border: none; background: transparent; color: #8a93a3; border-radius: 4px; cursor: pointer; font-size: 14px; line-height: 1; }
+    .tab .close:hover { background: #4c8bf5; color: #fff; }
+    .new-tab {
+      width: 30px; height: 30px; border: none; background: transparent; color: #9fb0c8;
+      border-radius: 8px 8px 0 0; cursor: pointer; font-size: 18px; line-height: 1;
+    }
+    .new-tab:hover { background: #2a2f3c; color: #fff; }
+
+    /* ===== 工具栏 ===== */
+    .toolbar {
+      height: 44px; display: flex; align-items: center; gap: 6px;
+      padding: 0 10px; background: #0f1320; border-top: 1px solid #1a1e28;
+      border-bottom: 1px solid #000; user-select: none; flex: none;
+    }
+    button.tb { width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer;
+      background: transparent; color: #b9c2d0; font-size: 16px; }
+    button.tb:hover { background: #1f2430; color: #fff; }
+    button.tb:disabled { opacity: .3; cursor: default; }
+    #addr { flex: 1; height: 30px; border: 1px solid #2a2f3c; border-radius: 15px;
+      padding: 0 14px; background: #1a1e28; color: #e6e6e6; font-size: 13px; outline: none; }
+    #addr:focus { border-color: #4c8bf5; }
+    .badge { font-size: 11px; color: #8fb3ff; padding: 3px 8px; border: 1px solid #34507f; border-radius: 10px; white-space: nowrap; }
+    #badge { display: none !important; } /* 地址栏右侧"Star Browser + 构建日期"提示按需求隐藏 */
+    .launcher-sep { margin: 14px 0 6px; font-size: 12px; color: #8a93a3; border-top: 1px solid #2a2f3c; padding-top: 10px; }
+    .spinner { width: 14px; height: 14px; border: 2px solid #4c8bf5; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== 页面区 ===== */
+    .webviews { flex: 1; position: relative; background: #fff; overflow: hidden; }
+    .webviews webview { position: absolute; inset: 0; width: 100%; height: 100%; border: none; display: none; }
+    .webviews webview.active { display: flex; }
+
+    /* ===== 错误条 ===== */
+    .fatal {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
+      background: #7f1d1d; color: #fff; padding: 10px 16px; font-size: 13px; line-height: 1.5;
+    }
+    .fatal[hidden] { display: none; }
+
+    /* ===== 网络环境提示条（白名单代理回退直连等场景） ===== */
+    .geo-warn {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 120;
+      display: flex; align-items: center; gap: 8px;
+      background: #4a2c0a; color: #ffd9a8; border-bottom: 1px solid #7c4a12;
+      padding: 8px 12px; font-size: 13px; line-height: 1.5;
+    }
+    .geo-warn[hidden] { display: none; }
+    .geo-warn b { color: #fff; }
+    .geo-warn-x { margin-left: auto; border: none; background: transparent; color: #ffd9a8; cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+    .geo-warn-x:hover { background: #7c4a12; }
+
+    /* ===== 设置面板 ===== */
+    .panel {
+      position: fixed; top: 80px; right: 12px; width: 340px; z-index: 100; max-height: 84vh; overflow: auto;
+      background: #1a1e28; color: #e6e6e6; border: 1px solid #2a2f3c; border-radius: 10px;
+      padding: 16px; box-shadow: 0 12px 30px rgba(0,0,0,.5); font-size: 13px;
+    }
+    .panel[hidden] { display: none; }
+    .panel-head { font-weight: 600; margin-bottom: 12px; color: #9fc0ff; display: flex; justify-content: space-between; align-items: center; }
+    .panel label { display: block; margin: 10px 0 4px; color: #b9c2d0; font-size: 12px; }
+    .panel input[type=text], .panel input[type=password], .panel select {
+      width: 100%; height: 32px; border: 1px solid #2a2f3c; border-radius: 6px;
+      background: #11151c; color: #e6e6e6; padding: 0 8px; font-size: 13px; outline: none;
+    }
+    .panel input:focus, .panel select:focus { border-color: #4c8bf5; }
+    .panel .chk { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #e6e6e6; }
+    .panel .chk input { width: auto; }
+    .panel .hint { color: #8a93a3; font-size: 11px; margin-top: 2px; }
+    .panel-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .ver-line { margin-top: 14px; padding-top: 10px; border-top: 1px solid #2a2f3c; color: #8a93a3; font-size: 11px; }
+    .ver-line span { color: #8fb3ff; font-family: monospace; }
+    .btn { height: 32px; padding: 0 14px; border: 1px solid #2a2f3c; border-radius: 6px; cursor: pointer; background: #2a2f3c; color: #e6e6e6; font-size: 13px; }
+    .btn.primary { background: #4c8bf5; border-color: #4c8bf5; color: #fff; }
+    .btn.ghost { background: transparent; border-color: transparent; color: #9fb0c8; padding: 0 6px; }
+    .btn:hover { filter: brightness(1.1); }
+
+    /* ===== 社媒启动台 ===== */
+    .launcher .plat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+    .plat { height: 36px; border: 1px solid #2a2f3c; border-radius: 6px; background: #11151c; color: #e6e6e6; cursor: pointer; font-size: 12px; }
+    .plat:hover { border-color: #4c8bf5; color: #fff; }
+    .check-result { margin-top: 8px; font-size: 12px; padding: 8px 10px; border-radius: 6px; background: #11151c; border: 1px solid #2a2f3c; line-height: 1.5; }
+    .check-result.ok { border-color: #2f7d4f; }
+    .check-result.bad { border-color: #7f3a3a; color: #ffc9c9; }
+
+    /* ===== 蓝白主题覆盖（出海场景：浅蓝底 + 白面板 + 蓝色主色）=====
+       采用「追加覆盖」而非改写原规则，保证结构不变、只换配色。 */
+    html, body { background: #eef4fb; color: #1f2733; }
+    .tabs-bar { background: #e8f0fb; }
+    .tab { background: #dbe7f7; color: #5a6b82; }
+    .tab.active { background: #ffffff; color: #1d4ed8; border-color: #c9dbf5; font-weight: 600; }
+    .tab:hover:not(.active) { background: #d0e0f6; }
+    .tab .close { color: #8fa3bd; }
+    .tab .close:hover { background: #2563eb; color: #ffffff; }
+    .new-tab { color: #7d90ab; }
+    .new-tab:hover { background: #dbe7f7; color: #1d4ed8; }
+    .toolbar { background: #ffffff; border-top: 1px solid #dbe7f7; border-bottom: 1px solid #c9dbf5; }
+    button.tb { color: #5a6b82; }
+    button.tb:hover { background: #eaf2fd; color: #1d4ed8; }
+    #addr { border-color: #d5e3f6; background: #f6f9fe; color: #1f2733; }
+    #addr:focus { border-color: #2563eb; background: #ffffff; }
+    .badge { color: #1d4ed8; border-color: #bfd7f7; }
+    .launcher-sep { color: #7d90ab; border-top-color: #e3ecf8; }
+    .spinner { border-color: #2563eb; }
+    .fatal { background: #dc2626; }
+    .geo-warn { background: #fff7ed; color: #9a3412; border-bottom-color: #fed7aa; }
+    .geo-warn b { color: #7c2d12; }
+    .geo-warn-x { color: #9a3412; }
+    .geo-warn-x:hover { background: #fed7aa; }
+    .panel { background: #ffffff; color: #1f2733; border-color: #d5e3f6; box-shadow: 0 12px 30px rgba(30,64,175,.14); }
+    .panel-head { color: #1d4ed8; }
+    .panel label { color: #5a6b82; }
+    .panel input[type=text], .panel input[type=password], .panel select {
+      border-color: #d5e3f6; background: #f8fbff; color: #1f2733;
+    }
+    .panel input:focus, .panel select:focus { border-color: #2563eb; background: #ffffff; }
+    .panel .chk { color: #1f2733; }
+    .panel .hint { color: #7d90ab; }
+    .ver-line { border-top-color: #e3ecf8; color: #7d90ab; }
+    .ver-line span { color: #1d4ed8; }
+    .btn { border-color: #d5e3f6; background: #ffffff; color: #1f2733; }
+    .btn.primary { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+    .btn.ghost { background: transparent; border-color: transparent; color: #7d90ab; }
+    .plat { border-color: #d5e3f6; background: #f8fbff; color: #1f2733; }
+    .plat:hover { border-color: #2563eb; color: #1d4ed8; background: #eef4ff; }
+    .check-result { background: #f8fbff; border-color: #d5e3f6; }
+    .check-result.ok { border-color: #16a34a; color: #15803d; }
+    .check-result.bad { border-color: #dc2626; color: #b91c1c; }
+
+    /* ===== 批量代理检测 ===== */
+    .batch { width: 940px; max-width: 94vw; }
+    #batch-input { width: 100%; border: 1px solid #d5e3f6; border-radius: 6px; background: #f8fbff;
+      color: #1f2733; padding: 8px; font-size: 12px; font-family: Consolas, monospace; outline: none; resize: vertical; }
+    #batch-input:focus { border-color: #2563eb; background: #ffffff; }
+    .batch-table-wrap { max-height: 46vh; overflow: auto; margin-top: 8px; border: 1px solid #e3ecf8; border-radius: 8px; }
+    .batch-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .batch-tbl th { position: sticky; top: 0; background: #eef4fb; color: #5a6b82; text-align: left;
+      padding: 6px 8px; border-bottom: 1px solid #d5e3f6; white-space: nowrap; z-index: 1; }
+    .batch-tbl td { padding: 6px 8px; border-bottom: 1px solid #eef2f8; white-space: nowrap; }
+    .st-ok { color: #16a34a; font-weight: 600; }
+    .st-fail { color: #dc2626; font-weight: 600; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; background: #eef4fb; color: #475569; }
+    .tag.res { background: #dcfce7; color: #15803d; }
+    .tag.dc { background: #fee2e2; color: #b91c1c; }
+    .tag.mb { background: #fef3c7; color: #b45309; }
+
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #2a2f3c; color: #e6e6e6; padding: 8px 16px; border-radius: 8px;
+      border: 1px solid #3a4150; font-size: 13px; z-index: 150; box-shadow: 0 8px 20px rgba(0,0,0,.4);
+    }
+    .toast[hidden] { display: none; }
+    .update-bar {
+      position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 160;
+      display: flex; align-items: center; gap: 12px;
+      background: #1f2937; color: #fff; padding: 10px 14px; border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 13px;
+    }
+    .update-bar.forced { background: #b91c1c; }
+    .update-bar[hidden] { display: none; }
+    .update-text { flex: 1; line-height: 1.4; }
+    .update-bar .btn { height: 30px; }
+    .ntp-ads { margin-top: 4px; }
+    .bm-list { display:flex; flex-direction:column; gap:4px; margin-top:8px; max-height:320px; overflow:auto; }
+    .bm-item { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#f4f8ff; border:1px solid #e2ecfb; border-radius:8px; }
+    .bm-item .bm-link { flex:1; min-width:0; color:#1d4ed8; text-decoration:none; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+    .bm-item .bm-link:hover { text-decoration:underline; }
+    .bm-item .bm-url { color:#6b7280; font-size:12px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bm-item .bm-del { margin-left:auto; flex:none; }
+
+    /* ===== 书签栏（仿 Chrome） ===== */
+    .bookmark-bar { display: flex; align-items: center; gap: 2px; height: 34px; padding: 0 10px;
+      background: #ffffff; border-bottom: 1px solid #d5e3f6; user-select: none; flex: none; }
+    .bookmark-bar[hidden] { display: none; }
+    .bm-bar-items { display: flex; align-items: center; gap: 2px; flex: 1; overflow-x: auto; height: 100%; }
+    .bm-bar-items::-webkit-scrollbar { height: 0; }
+    .bm-bar-item { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 6px;
+      cursor: pointer; color: #1f2733; font-size: 12.5px; white-space: nowrap; max-width: 200px; }
+    .bm-bar-item:hover { background: #eaf2fd; }
+    .bm-fav { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: cover; }
+    .bm-letter { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+      font-size: 11px; font-weight: 600; color: #fff; background: #2563eb; }
+    .bm-bar-label { overflow: hidden; text-overflow: ellipsis; }
+    .bm-bar-more { flex: none; width: 26px; height: 26px; border: none; background: transparent; color: #5a6b82;
+      border-radius: 6px; cursor: pointer; font-size: 15px; }
+    .bm-bar-more:hover { background: #eaf2fd; color: #1d4ed8; }
+    button.tb#starBtn.on { color: #f5a623; }
+
+    /* ===== 右键菜单（书签栏项） ===== */
+    .ctx-menu { position: fixed; z-index: 300; min-width: 150px; background: #fff; border: 1px solid #d5e3f6;
+      border-radius: 8px; box-shadow: 0 8px 24px rgba(30,64,175,.18); padding: 4px; font-size: 13px; }
+    .ctx-item { padding: 7px 12px; border-radius: 6px; cursor: pointer; color: #1f2733; }
+    .ctx-item:hover { background: #eaf2fd; }
+    .ctx-item.danger { color: #dc2626; }
+    .ctx-item.danger:hover { background: #fee2e2; }
+
+    /* ===== 新标签页 NTP（仿 Chrome） ===== */
+    .ntp { position: fixed; left: 0; right: 0; bottom: 0; top: 78px; z-index: 60; overflow: auto;
+      background: #eef4fb; padding: 28px 16px 40px; }
+    .ntp[hidden] { display: none; }
+    .ntp-inner { max-width: 720px; margin: 0 auto; }
+    .ntp-logo { text-align: center; font-size: 30px; font-weight: 700; color: #1d4ed8; letter-spacing: 1px; margin-bottom: 18px; }
+    .ntp-search { max-width: 560px; margin: 0 auto 26px; }
+    .ntp-search input { width: 100%; height: 42px; border: 1px solid #d5e3f6; border-radius: 21px; background: #fff;
+      padding: 0 18px; font-size: 14px; outline: none; color: #1f2733; box-shadow: 0 2px 8px rgba(30,64,175,.06); }
+    .ntp-search input:focus { border-color: #2563eb; box-shadow: 0 2px 12px rgba(37,99,235,.18); }
+    .ntp-section-title { font-size: 13px; color: #5a6b82; margin: 18px 4px 10px; font-weight: 600; }
+
+    /* ===== 在线公告弹窗（announcements 配置驱动） ===== */
+    .modal { position: fixed; inset: 0; z-index: 220; display: flex; align-items: center; justify-content: center;
+      background: rgba(15,23,42,.45); }
+    .modal[hidden] { display: none; }
+    .modal-card { width: min(440px, 92vw); background: #fff; border-radius: 14px; padding: 22px 22px 18px;
+      box-shadow: 0 18px 60px rgba(2,8,23,.35); }
+    .modal-card h3 { margin: 0 0 10px; font-size: 17px; color: #0f172a; }
+    .announce-body { font-size: 13.5px; line-height: 1.7; color: #334155; white-space: pre-wrap; word-break: break-word;
+      max-height: 56vh; overflow: auto; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+    .ntp-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; }
+    .ntp-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px; border-radius: 12px;
+      background: #fff; border: 1px solid #e3ecf8; cursor: pointer; transition: transform .08s, box-shadow .12s; }
+    .ntp-tile:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(30,64,175,.14); border-color: #bfd7f7; }
+    .ntp-fav { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; background: #f1f5fb; }
+    .ntp-tile .bm-letter { width: 36px; height: 36px; font-size: 16px; border-radius: 8px; }
+    .ntp-label { font-size: 12px; color: #1f2733; text-align: center; line-height: 1.3; max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .ntp-empty { grid-column: 1 / -1; color: #7d90ab; font-size: 12px; padding: 10px 4px; }
+
+    /* ===== 收藏气泡（改名称/网址/删除） ===== */
+    .star-pop { position: fixed; z-index: 160; width: 280px; background: #fff; border: 1px solid #d5e3f6; border-radius: 10px;
+      box-shadow: 0 12px 30px rgba(30,64,175,.18); padding: 12px; }
+    .star-pop[hidden] { display: none; }
+    .star-pop-row { display: flex; flex-direction: column; gap: 8px; }
+    .star-pop-row input { width: 100%; height: 32px; border: 1px solid #d5e3f6; border-radius: 6px; background: #f8fbff;
+      padding: 0 8px; font-size: 13px; outline: none; color: #1f2733; }
+    .star-pop-row input:focus { border-color: #2563eb; background: #fff; }
+    .star-pop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div id="geoWarn" class="geo-warn" hidden>
+    <span id="geoWarnText"></span>
+    <button id="geoWarnClose" class="geo-warn-x" title="关闭">✕</button>
+  </div>
+  <div class="tabs-bar" id="tabsBar">
+    <div class="tabs" id="tabs" style="display:flex; gap:2px;"></div>
+    <button class="new-tab" id="newTab" title="新标签页">+</button>
+  </div>
+
+  <div class="toolbar">
+    <button class="tb" id="back" title="后退">‹</button>
+    <button class="tb" id="forward" title="前进">›</button>
+    <button class="tb" id="reload" title="刷新">⟳</button>
+    <button class="tb" id="home" title="起始页">⌂</button>
+    <button class="tb" id="bmBtn" title="收藏夹">🔖</button>
+    <div class="spinner" id="spinner"></div>
+    <input id="addr" type="text" placeholder="输入网址，回车访问…" />
+    <button class="tb" id="starBtn" title="收藏此页 / 取消收藏">☆</button>
+    <span class="badge" id="badge">Lite</span>
+    <button class="tb" id="launchBtn" title="社媒快捷启动台">🌐</button>
+    <button class="tb" id="batchBtn" title="批量代理检测">🔬</button>
+    <button class="tb" id="gear" title="环境设置">⚙</button>
+    <button class="tb" id="closeWin" title="关闭窗口">✕</button>
+  </div>
+
+  <!-- 书签栏（仿 Chrome：常驻地址栏下方，点按当前标签打开，中键/右键菜单新标签或删除） -->
+  <div class="bookmark-bar" id="bmBar">
+    <div class="bm-bar-items" id="bmBarItems"></div>
+    <button class="bm-bar-more" id="bmBarMore" title="全部收藏夹 ›">»</button>
+  </div>
+
+  <div class="webviews" id="wrap"></div>
+
+  <!-- 新标签页（仿 Chrome NTP）：常用收藏 + 最常访问，自动适应用户习惯 -->
+  <div id="ntp" class="ntp" hidden>
+    <div class="ntp-inner">
+      <div class="ntp-logo">Star Browser</div>
+      <div class="ntp-search"><input id="ntpSearch" type="text" placeholder="搜索或输入网址" /></div>
+      <div class="ntp-section-title">常用收藏</div>
+      <div class="ntp-tiles" id="ntpBookmarks"></div>
+      <div class="ntp-section-title">最常访问</div>
+      <div class="ntp-tiles" id="ntpVisits"></div>
+      <div class="ntp-section-title">常用网址</div>
+      <div class="ntp-tiles" id="ntpCommon"></div>
+      <div id="ntpAds" class="ntp-ads" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- 收藏当前页的小气泡（改名 / 改网址 / 删除） -->
+  <div id="starPop" class="star-pop" hidden>
+    <div class="star-pop-row">
+      <input id="starTitle" type="text" placeholder="名称" />
+      <input id="starUrl" type="text" placeholder="网址" />
+    </div>
+    <div class="star-pop-actions">
+      <button class="btn ghost" id="starRemove" type="button" style="display:none;">删除</button>
+      <button class="btn primary" id="starDone" type="button">完成</button>
+    </div>
+  </div>
+
+  <div id="fatal" class="fatal" hidden></div>
+
+  <div id="settings" class="panel" hidden>
+    <div class="panel-head"><span>环境设置</span><button class="btn ghost" id="s-close">✕</button></div>
+    <label>国家 / 地区</label>
+    <select id="s-country"></select>
+    <label>浏览器语言</label>
+    <select id="s-language"></select>
+    <div class="hint">默认跟随代理 IP 所在地语言；如需固定某语言，在此切换，或点下方「↺ 跟随代理 IP」恢复自动。</div>
+    <div style="margin-top:6px;display:flex;gap:6px;">
+      <button class="btn ghost" id="s-lang-reset" type="button" style="height:30px;">↺ 跟随代理 IP</button>
+    </div>
+    <label>时区</label>
+    <select id="s-timezone"></select>
+    <div class="hint">
+      默认「自动（跟随出口 IP）」。⚠️ 各检测站 GeoIP 库对同一 IP 可能判定不同<br />
+      （实测：whoer.com 判新泽西→纽约时区，yalala.com 判加州→洛杉矶时区），<br />
+      此时单一时区无法同时满足，可在此<b>手动指定</b>成目标站点期望的时区。
+    </div>
+    <div style="margin-top:6px;display:flex;gap:6px;">
+      <button class="btn ghost" id="s-tz-reset" type="button" style="height:30px;">↺ 恢复自动</button>
+    </div>
+    <label>起始网址</label>
+    <input id="s-start" type="text" placeholder="https://..." />
+    <label class="chk"><input id="s-proxyOn" type="checkbox" /> 启用代理</label>
+    <label>代理类型</label>
+    <select id="s-type"><option value="socks5">SOCKS5（默认）</option><option value="http">HTTP</option></select>
+    <label>一键粘贴解析（自动填入下方四项）</label>
+    <div style="display:flex;gap:6px;">
+      <input id="s-paste" type="text" placeholder="粘贴：host:port:user:pass" style="flex:1;" />
+      <button class="btn" id="s-paste-go" type="button" style="height:32px;">解析填入</button>
+    </div>
+    <label>代理地址（host:port）</label>
+    <input id="s-host" type="text" placeholder="例如 103.13.214.244:45001" />
+    <label>账号（可选）</label>
+    <input id="s-user" type="text" />
+    <label>密码（可选）</label>
+    <input id="s-pass" type="password" />
+    <div class="panel-actions">
+      <button id="s-check" class="btn">检测代理出口 IP</button>
+    </div>
+    <div id="s-check-result" class="check-result" hidden></div>
+    <label>WebRTC（影响 IP / DNS 泄漏）</label>
+    <select id="s-webrtc">
+      <option value="proxy">代理模式（只暴露代理 IP）</option>
+      <option value="disable">关闭（彻底无 WebRTC 泄漏）</option>
+    </select>
+    <div class="hint">DNS / IP 是网络出口层，JS 伪装改不了。需配置代理（推荐 SOCKS5，远程解析 DNS）才能真正隐藏中国 DNS；选「关闭」可消除 WebRTC 引起的 DNS 泄漏。</div>
+    <label>备注 / 账号说明</label>
+    <input id="s-note" type="text" placeholder="如：客户A的FB广告号" />
+    <label>标签（逗号分隔，便于筛选）</label>
+    <input id="s-tags" type="text" placeholder="如：FB, 广告, 重要" />
+    <label class="chk"><input id="s-regen" type="checkbox" /> 重新生成指纹</label>
+    <div class="panel-actions">
+      <button id="s-clear" class="btn">清除浏览数据</button>
+    </div>
+    <div class="panel-actions">
+      <button id="s-cookie-out" class="btn">备份 Cookie</button>
+      <button id="s-cookie-in" class="btn">恢复 Cookie</button>
+    </div>
+    <div class="panel-actions">
+      <button id="s-cancel" class="btn">取消</button>
+      <button id="s-save" class="btn primary">保存并应用</button>
+    </div>
+    <div class="ver-line">构建版本：<span id="s-version">—</span></div>
+    <label class="chk"><input id="s-telemetry" type="checkbox" checked /> 匿名使用统计（仅随机 ID + 版本/平台，帮助改进产品，可关闭）</label>
+  </div>
+
+  <div id="launcher" class="panel launcher" hidden>
+    <div class="panel-head"><span>社媒快捷启动台</span><button class="btn ghost" id="launcher-close">✕</button></div>
+    <!-- 内容由 browser-shell.js 渲染：优先用「在线配置」（可在服务端随时改站点/广告），
+         取不到时自动回落内置默认。默认项见 DEFAULT_LAUNCHER。 -->
+    <div id="launcher-body"></div>
+    <div class="hint">点击平台在新标签打开；同一环境共享 Cookie，各平台登录态互认。检测站用于验证指纹 / 代理是否生效。</div>
+  </div>
+
+  <!-- 批量代理检测 -->
+  <div id="batchPanel" class="panel batch" hidden>
+    <div class="panel-head"><span>批量代理检测</span><button class="btn ghost" id="batch-close">✕</button></div>
+    <label>粘贴代理列表（每行一条）</label>
+    <textarea id="batch-input" rows="5" placeholder="支持格式：&#10;ip:port:user:pass&#10;socks5://ip:port:user:pass&#10;http://user:pass@ip:port&#10;ip:port"></textarea>
+    <div class="hint">自动识别 S5 / HTTP（无协议头按 S5 解析）。并发 25 条，单条超时约 10 秒。</div>
+    <div class="panel-actions">
+      <button class="btn" id="batch-clear" type="button">清空</button>
+      <button class="btn primary" id="batch-run" type="button">开始检测</button>
+    </div>
+    <div class="launcher-sep"><span>检测结果</span></div>
+    <div id="batch-status" class="hint">—</div>
+    <div class="batch-table-wrap">
+      <table class="batch-tbl">
+        <thead>
+          <tr>
+            <th>状态</th><th>延迟</th><th>出口 IP</th><th>国家 / 城市</th><th>时区</th>
+            <th>类型</th><th>风控</th><th>运营商 / ASN</th><th>代理</th>
+          </tr>
+        </thead>
+        <tbody id="batch-body"></tbody>
+      </table>
+    </div>
+    <div class="panel-actions">
+      <button class="btn" id="batch-export" type="button">导出 CSV</button>
+    </div>
+  </div>
+
+  <!-- 收藏夹 -->
+  <div id="bmPanel" class="panel bookmarks" hidden>
+    <div class="panel-head"><span>收藏夹</span><button class="btn ghost" id="bm-close">✕</button></div>
+    <div class="panel-actions">
+      <button class="btn" id="bm-add-current" type="button">＋ 收藏当前页</button>
+    </div>
+    <div id="bm-list" class="bm-list"></div>
+    <div class="hint">点击条目在当前标签打开；「✕」删除。收藏夹在所有环境间共享。</div>
+  </div>
+
+  <!-- 版本升级提醒条（云端 manifest.version 高于本机时显示） -->
+  <div id="updateBar" class="update-bar" hidden>
+    <span id="updateText" class="update-text"></span>
+    <button class="btn primary" id="updateDownload" type="button">下载更新</button>
+    <button class="btn ghost" id="updateClose" type="button">稍后</button>
+  </div>
+
+  <!-- 在线公告弹窗（由运营配置 announcements 驱动；loadManifest 跑在本页，故 modal 必须放本页） -->
+  <div id="announceModal" class="modal" hidden>
+    <div class="modal-card">
+      <h3 id="announceTitle">公告</h3>
+      <div id="announceBody" class="announce-body"></div>
+      <div class="modal-actions">
+        <button id="announceClose" class="btn">我知道了</button>
+        <a id="announceLink" class="btn primary" href="#" target="_blank" rel="noopener" hidden>查看详情</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="browser-shell.js"></script>
+</body>
+</html>

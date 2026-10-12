@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "FP Guard",
+  "version": "0.1.0",
+  "description": "环境指纹伪装与代理认证（由主程序为每个环境动态生成配置）",
+  "permissions": ["proxy", "webRequest", "webRequestAuthProvider", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["config.js", "fp-core.js", "inject.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    }
+  ]
+}

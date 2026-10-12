@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Star Browser · 使用教程</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f5f7fb; color:#0f172a; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; line-height:1.7; }
+  .wrap { max-width:760px; margin:0 auto; padding:32px 22px 56px; }
+  header.hero { background:linear-gradient(135deg,#2563eb,#4f46e5); color:#fff; border-radius:16px; padding:26px 28px; box-shadow:0 10px 30px rgba(37,99,235,.25); }
+  header.hero h1 { margin:0 0 8px; font-size:24px; }
+  header.hero p { margin:0; opacity:.92; font-size:14px; }
+  section { background:#fff; border:1px solid #e7ecf3; border-radius:14px; padding:22px 24px; margin-top:18px; box-shadow:0 2px 10px rgba(15,23,42,.04); }
+  h2 { font-size:18px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+  h2 .num { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:#eef2ff; color:#2563eb; font-size:13px; font-weight:700; }
+  p { font-size:14px; color:#334155; margin:8px 0; }
+  ul { margin:8px 0; padding-left:20px; }
+  li { font-size:14px; color:#334155; margin:4px 0; }
+  .tip { background:#f0f9ff; border:1px solid #bae6fd; color:#075985; border-radius:10px; padding:10px 14px; font-size:13px; margin:12px 0; }
+  .fig { display:block; width:100%; max-width:680px; margin:14px auto; background:#f8fafc; border:1px solid #e7ecf3; border-radius:12px; padding:14px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0; }
+  .card { background:#f8fafc; border:1px solid #e7ecf3; border-radius:10px; padding:12px 14px; font-size:13px; color:#334155; }
+  .card b { display:block; color:#0f172a; margin-bottom:4px; font-size:13px; }
+  .end { text-align:center; margin-top:22px; padding:18px; background:#0f172a; color:#fff; border-radius:14px; }
+  .end a { color:#7dd3fc; text-decoration:none; }
+  code { background:#eef2f7; padding:1px 6px; border-radius:5px; font-size:12px; font-family:Consolas,monospace; }
+  footer.foot { text-align:center; color:#94a3b8; font-size:12px; margin-top:20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>📖 Star Browser · 使用教程</h1>
+    <p>专为外贸人提供的免费指纹浏览器：每个环境 = 独立指纹 + 独立代理 + 独立 Cookie。这篇图文教程帮你 5 分钟上手。</p>
+  </header>
+
+  <section>
+    <h2><span class="num">1</span>什么是Star Browser（指纹浏览器）</h2>
+    <p>普通浏览器所有账号共用同一套「设备指纹」（系统、时区、语言、UA、屏幕等）。平台用指纹关联账号，一旦一个号出事，其它号也容易连坐。</p>
+    <p>Star Browser把<strong>控制台</strong>和<strong>内核浏览器</strong>分开：你在控制台创建「环境」，每个环境都生成一套全新的伪装指纹，再注入到独立的内核窗口里运行。多个环境之间彼此隔离，互不相认。</p>
+    <svg class="fig" viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="控制台与内核窗口关系图">
+      <rect x="20" y="55" width="180" height="110" rx="12" fill="#eef2ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="110" y="100" text-anchor="middle" font-size="15" fill="#1d4ed8" font-family="sans-serif">控制台</text>
+      <text x="110" y="122" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">环境管理</text>
+      <text x="110" y="140" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">生成指纹</text>
+      <line x1="200" y1="110" x2="270" y2="110" stroke="#2563eb" stroke-width="2" marker-end="url(#ar)"/>
+      <text x="235" y="100" text-anchor="middle" font-size="11" fill="#2563eb" font-family="sans-serif">指纹注入</text>
+      <rect x="290" y="40" width="370" height="140" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+      <rect x="306" y="56" width="338" height="22" rx="6" fill="#e2e8f0"/>
+      <circle cx="320" cy="67" r="4" fill="#ef4444"/><circle cx="334" cy="67" r="4" fill="#f59e0b"/><circle cx="348" cy="67" r="4" fill="#22c55e"/>
+      <rect x="306" y="86" width="338" height="80" rx="6" fill="#fff" stroke="#cbd5e1"/>
+      <text x="475" y="132" text-anchor="middle" font-size="13" fill="#334155" font-family="sans-serif">内核浏览器窗口（独立环境）</text>
+      <defs>
+        <marker id="ar" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="tip">💡 一个环境 ≈ 一台「干净的新电脑 + 新网络」。多账号矩阵运营时，给每个账号单独开一个环境最稳妥。</div>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>三步创建第一个环境</h2>
+    <svg class="fig" viewBox="0 0 680 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="三步创建环境流程图">
+      <rect x="10" y="35" width="190" height="60" rx="10" fill="#eef2ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="105" y="62" text-anchor="middle" font-size="14" fill="#1d4ed8" font-family="sans-serif">① 点「+ 新建环境」</text>
+      <text x="105" y="82" text-anchor="middle" font-size="11" fill="#475569" font-family="sans-serif">填名称 / 分组</text>
+      <line x1="200" y1="65" x2="240" y2="65" stroke="#2563eb" stroke-width="2" marker-end="url(#b)"/>
+      <rect x="245" y="35" width="195" height="60" rx="10" fill="#eef2ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="342" y="58" text-anchor="middle" font-size="13" fill="#1d4ed8" font-family="sans-serif">② 选系统/国家</text>
+      <text x="342" y="78" text-anchor="middle" font-size="11" fill="#475569" font-family="sans-serif">Windows/macOS/Android + 填代理</text>
+      <line x1="440" y1="65" x2="480" y2="65" stroke="#2563eb" stroke-width="2" marker-end="url(#b)"/>
+      <rect x="485" y="35" width="185" height="60" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+      <text x="577" y="62" text-anchor="middle" font-size="14" fill="#15803d" font-family="sans-serif">③ 在内核中打开</text>
+      <text x="577" y="82" text-anchor="middle" font-size="11" fill="#475569" font-family="sans-serif">环境列表点「打开」</text>
+      <defs><marker id="b" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/></marker></defs>
+    </svg>
+    <ul>
+      <li><strong>新建</strong>：点左上角「+ 新建环境」，取个名字、选个分组。</li>
+      <li><strong>配置</strong>：选操作系统（Windows / macOS / Android）与目标国家，按需填代理（支持 SOCKS5 / HTTP，也能一键粘贴 <code>host:port:user:pass</code>）。</li>
+      <li><strong>打开</strong>：在环境列表点「在内核中打开」，几秒后内核窗口就绪，可直接上网。</li>
+    </ul>
+    <div class="tip">💡 不填代理也能用（走本机出口）。但做多账号时务必每个环境配独立代理，否则指纹隔离失去意义。</div>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>指纹与时区自动对齐（为什么 whoer 不报时差）</h2>
+    <p>很多指纹浏览器「时区」是个写死的默认值，和代理出口 IP 的真实地理对不上，检测网站（whoer / browserscan）一比对就报「时区不一致」。</p>
+    <p>Star Browser在<strong>打开环境的瞬间自动解析出口 IP 的真实地理</strong>，把时区、语言对齐到真实出口（有代理走代理出口，无代理走本机出口），再注入内核。所以检测网站看到的时间、语言和 IP 地理是吻合的。</p>
+    <svg class="fig" viewBox="0 0 680 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="出口IP到指纹注入流程图">
+      <rect x="10" y="35" width="130" height="50" rx="10" fill="#eef2ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="75" y="64" text-anchor="middle" font-size="12" fill="#1d4ed8" font-family="sans-serif">出口 IP</text>
+      <line x1="140" y1="60" x2="178" y2="60" stroke="#2563eb" stroke-width="2" marker-end="url(#c)"/>
+      <rect x="183" y="35" width="135" height="50" rx="10" fill="#eef2ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="250" y="64" text-anchor="middle" font-size="12" fill="#1d4ed8" font-family="sans-serif">GeoIP 反查</text>
+      <line x1="318" y1="60" x2="356" y2="60" stroke="#2563eb" stroke-width="2" marker-end="url(#c)"/>
+      <rect x="361" y="35" width="140" height="50" rx="10" fill="#eef2ff" stroke="#2563eb" stroke-width="2"/>
+      <text x="431" y="58" text-anchor="middle" font-size="12" fill="#1d4ed8" font-family="sans-serif">时区/语言对齐</text>
+      <text x="431" y="76" text-anchor="middle" font-size="10" fill="#475569" font-family="sans-serif">= IP 真实地理</text>
+      <line x1="501" y1="60" x2="539" y2="60" stroke="#2563eb" stroke-width="2" marker-end="url(#c)"/>
+      <rect x="544" y="35" width="130" height="50" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+      <text x="609" y="64" text-anchor="middle" font-size="12" fill="#15803d" font-family="sans-serif">注入内核</text>
+      <defs><marker id="c" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2563eb"/></marker></defs>
+    </svg>
+    <div class="tip">💡 想要完全手动？在环境编辑里把「浏览器语言 / 时区」设为具体值即可锁定，关闭「自动跟随出口 IP」。</div>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span>内置社媒 &amp; 检测网站快捷入口</h2>
+    <p>内核窗口右上角是<strong>社媒启动台</strong>，点一下在新标签打开常用平台；下方还有「检测类网站」分组，专门用来验证指纹是否过关：</p>
+    <div class="cards">
+      <div class="card"><b>whoer.com</b>综合指纹 / IP 检测</div>
+      <div class="card"><b>browserscan.net</b>高级指纹体检</div>
+      <div class="card"><b>browserleaks.com</b>WebRTC / Canvas 泄露</div>
+      <div class="card"><b>iphey.com</b>一键判定是否暴露</div>
+      <div class="card"><b>dnsleaktest.com</b>DNS 是否泄漏</div>
+      <div class="card"><b>whatismybrowser</b>环境信息总览</div>
+    </div>
+    <div class="tip">💡 打开环境后，先点开 whoer / browserscan 跑一遍——时区、语言、IP 地理三处都绿，基本就稳了。</div>
+  </section>
+
+  <section>
+    <h2><span class="num">5</span>代理管理 &amp; Cookie 管理</h2>
+    <div class="cards">
+      <div class="card"><b>代理管理</b>左侧「代理管理」汇总所有环境的代理，一键检测出口 IP / 国家 / 时区，相同代理自动归并，绿/红标签一目了然。</div>
+      <div class="card"><b>Cookie 管理</b>左侧「Cookie 管理」按环境查看 Cookie 条数，支持导出 / 导入 / 清空，各环境完全隔离。</div>
+    </div>
+    <p>运营社媒矩阵时，把账号的登录态（Cookie）按环境备份好，换机或重装后一键导入即可恢复，不用每次重新登录。</p>
+  </section>
+
+  <section>
+    <h2><span class="num">6</span>常见问题（FAQ）</h2>
+    <ul>
+      <li><strong>窗口加载慢？</strong>首次打开会联网对齐指纹（已加 10 分钟缓存），重复打开是秒开；直连无代理也正常。</li>
+      <li><strong>打不开网页？</strong>先检查代理是否填对、出口是否通——在环境编辑点「检测代理」看出口 IP；带账号密码的 SOCKS5 会自动走本地无鉴权网关。</li>
+      <li><strong>指纹与 IP 时区不一致？</strong>环境编辑里「浏览器语言 / 时区」可手动锁定（默认自动跟随出口 IP）；也可在控制台点「检测代理」确认出口地理。</li>
+      <li><strong>想用本机 Chrome 打开？</strong>环境「更多」里选「本机 Chrome」也能带同样指纹启动，适合需要本地扩展的场景。</li>
+    </ul>
+  </section>
+
+  <div class="end">
+    <p style="margin:0 0 6px;">需要帮助？客服：<a href="https://kf.osdwan.com" target="_blank" rel="noopener">kf.osdwan.com</a></p>
+    <p style="margin:0;opacity:.8;font-size:13px;">社群二维码敬请期待 · Star Browser · 专为外贸人提供的免费指纹浏览器</p>
+  </div>
+
+  <footer class="foot">本教程为内置离线版，后续可能升级为在线文档（含视频演示）。</footer>
+
+</div>
+</body>
+</html>

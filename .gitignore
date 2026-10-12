@@ -1,0 +1,16 @@
+.DS_Store
+._*
+node_modules/
+macos/dist/
+macos/.test-data/
+macos/test-results/
+macos/build/icon.iconset/
+*.log
+*.exe
+*.asar
+*.dmg
+*.zip
+.env
+.env.*
+!.env.example
+ChangYiBrowser-electron-extract/
