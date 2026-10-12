@@ -74,6 +74,10 @@ let app,origin;
   for(let i=0;i<150;i++){taskResult=(await manager.evaluate(()=>window.api.snapshot())).taskRuns.find(run=>run.id===taskRun.id);if(['completed','failed'].includes(taskResult?.state))break;await new Promise(resolve=>setTimeout(resolve,50));}
   assert.equal(taskResult?.state,'completed',taskResult?.error);assert.equal(taskResult.outputs.length,1);assert.deepEqual([...fs.readFileSync(taskResult.outputs[0].path).subarray(0,8)],[137,80,78,71,13,10,26,10]);
   results.push({name:'打包应用中的实际任务执行与截图',status:'passed'});
+  const taskFile=path.join(data,'package-tasks.json');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},taskFile);
+  assert.equal((await manager.evaluate(id=>window.api.taskExport([id]),savedTask.id)).count,1);assert.equal(fs.statSync(taskFile).mode&0o777,0o600);assert.equal(JSON.parse(fs.readFileSync(taskFile,'utf8')).tasks[0].id,undefined);
+  const taskPreview=await manager.evaluate(()=>window.api.taskImportPreview());assert.equal(taskPreview.count,1);const importedTask=await manager.evaluate(token=>window.api.taskImportApply(token),taskPreview.token);assert.equal(importedTask.count,1);assert.notEqual(importedTask.ids[0],savedTask.id);assert.equal((await manager.evaluate(()=>window.api.snapshot())).taskRuns.length,1);
+  results.push({name:'打包应用的真实任务文件导出、预览与独立导入',status:'passed'});
   await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);await manager.evaluate(id=>window.api.launch(id),profile.id);
   const chromeVersion=await app.evaluate(({app} ,id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return require('./src/main/launcher').getLaunchedBrowser(id).fingerprint.chromeVersion;},profile.id);
   assert.equal((await manager.evaluate(id=>window.api.preview(id),profile.id)).chromeVersion,chromeVersion);
@@ -84,7 +88,7 @@ let app,origin;
   const chromePid=await app.evaluate(({app},id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return require('./src/main/launcher').getLaunchedBrowser(id).child.pid;},profile.id);
   await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);assert.throws(()=>process.kill(chromePid,0),{code:'ESRCH'});
   results.push({name:'打包应用中的真实 Chrome 多标签选择检查与运行配置',status:'passed'});
-  console.log('Packaged macOS app: 10 checks passed.');
+  console.log('Packaged macOS app: 11 checks passed.');
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
   if(app){await app.evaluate(async({app})=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json'),browsers=require('./src/main/launcher').getLaunchedBrowsers();await Promise.all(browsers.map(async([,running])=>{await running.pipe.send('Browser.close').catch(()=>running.child.kill());for(let i=0;i<150&&running.child.exitCode===null&&running.child.signalCode===null;i++)await new Promise(resolve=>setTimeout(resolve,30));if(running.child.exitCode===null&&running.child.signalCode===null)running.child.kill();}));}).catch(()=>{});await app.close().catch(()=>{});}

@@ -62,6 +62,13 @@ class AutomationTasks{
    if(result?.invalid)throw new Error('CSS 元素定位格式无效');if(result)return result;await this.wait(item,100);
   }throw new Error('等待元素超时，请检查页面和元素定位');
  }
+ async capture(item,wc){
+  for(let attempt=0;attempt<3;attempt++){
+   this.check(item);
+   try{const image=await wc.capturePage({x:0,y:0,width:0,height:0},{stayAwake:true});if(image.isEmpty())throw new Error('Current display surface not available for capture');return image;}
+   catch(error){this.check(item);if(!/UnknownVizError|display surface not available/i.test(error.message))throw error;if(attempt===2)throw new Error('网页图像暂时不可用，请打开页面后重新执行截图');await this.wait(item,150*(attempt+1));}
+  }
+ }
  async step(item,step,index){
   const wc=await this.guest(item,step.timeout||15000);this.check(item);
   if(step.type==='navigate'){
@@ -77,7 +84,7 @@ class AutomationTasks{
    if(step.type==='fill'){await this.evaluate(wc,`(()=>{const element=document.querySelector(${JSON.stringify(step.selector)});element.focus();if(element.select)element.select();else{const range=document.createRange();range.selectNodeContents(element);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);}})()`);await wc.debugger.sendCommand('Input.insertText',{text:step.text});}
   }else if(step.type==='press'){await wc.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyDown',key:step.key,windowsVirtualKeyCode:KEYS[step.key],...(step.key==='Enter'?{text:'\r'}:{})});await wc.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key:step.key,windowsVirtualKeyCode:KEYS[step.key]});}
   else if(step.type==='scroll'){const point=step.selector?await this.element(item,wc,step.selector,step.timeout):{x:100,y:100};await wc.debugger.sendCommand('Input.dispatchMouseEvent',{type:'mouseWheel',x:point.x,y:point.y,deltaX:step.x,deltaY:step.y});}
-  else if(step.type==='screenshot'){const directory=path.join(this.output,item.run.id);await fs.promises.mkdir(directory,{recursive:true,mode:0o700});const destination=path.join(directory,'step-'+String(index+1).padStart(2,'0')+'.png');const image=await wc.capturePage();await fs.promises.writeFile(destination,image.toPNG(),{mode:0o600});item.run.outputs.push({name:'第 '+(index+1)+' 步截图',path:destination});}
+  else if(step.type==='screenshot'){const directory=path.join(this.output,item.run.id);await fs.promises.mkdir(directory,{recursive:true,mode:0o700});const destination=path.join(directory,'step-'+String(index+1).padStart(2,'0')+'.png');const image=await this.capture(item,wc);await fs.promises.writeFile(destination,image.toPNG(),{mode:0o600});item.run.outputs.push({name:'第 '+(index+1)+' 步截图',path:destination});}
   this.check(item);
  }
  async execute(item){

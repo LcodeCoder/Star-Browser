@@ -80,3 +80,8 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 ## 多标签真实检查（0.9.0）
 
 CDP Target/Runtime 官方协议：https://chromedevtools.github.io/devtools-protocol/tot/Target/ 、https://chromedevtools.github.io/devtools-protocol/tot/Runtime/ 。使用 Target.getTargets/getTargetInfo 与已有页面 sessionId 读取指定网页，不推测哪个 Chrome 窗口处于前台。检查使用 Runtime.evaluate 读取当前网页。访问日期：2026-10-12；本机协议与真实 Chrome 测试共同确认行为。
+
+
+## 任务复用与真实截图（0.10.0）
+
+本地任务定义复用参考此前 AdsPower RPA 与官方自动化功能分类；当前 JSON 为 Star 自有版本 1，不声称外部厂商格式兼容。Electron capturePage 官方实现：https://github.com/electron/electron/blob/main/shell/browser/api/electron_api_web_contents.cc ，API：https://www.electronjs.org/docs/latest/api/web-contents 。截图依赖真实显示表面，使用 stayAwake 选项和受控短暂失败重试；不能将加载完成当作任何显示表面必定可捕获的保证。访问日期：2026-10-12。

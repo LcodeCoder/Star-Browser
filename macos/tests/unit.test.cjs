@@ -217,3 +217,30 @@ test('标签会话保留固定、静音和休眠，旧数据仍可读取且配�
  try{const store=new Store(dir),profile=store.create({name:'Tab metadata'});store.sessionTabs(profile.id,[{url:'https://example.test/one',title:'One',pinned:true,muted:true,sleeping:true},{url:'about:home',title:'Home'}],1);const restored=new Store(dir).get(profile.id);assert.deepEqual(restored.sessionTabs[0],{url:'https://example.test/one',title:'One',pinned:true,muted:true,sleeping:true});assert.equal(restored.sessionTabs[1].pinned,false);assert.equal(restored.sessionActive,1);assert.equal(store.clone(profile.id).sessionTabs,undefined);store.flush();}
  finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('任务文件格式与字段限制明确拒绝，保留文本且剥离身份及执行数据',()=>{
+ const {parseDocument}=require('../src/main/task-transfer');
+ const doc={format:'star-browser-tasks',version:1,tasks:[{id:'old',name:'任务定义',description:'复用',profileId:'never-import',runs:[{state:'running'}],steps:[{type:'fill',selector:'#text',text:'完整保留的私有文字',unknown:'drop'}]}]};
+ const [task]=parseDocument(doc);assert.equal(task.steps[0].text,'完整保留的私有文字');assert.equal(task.id,undefined);assert.equal(task.profileId,undefined);assert.equal(task.runs,undefined);assert.equal(task.steps[0].unknown,undefined);
+ assert.throws(()=>parseDocument({...doc,version:2}),/格式版本/);assert.throws(()=>parseDocument({...doc,tasks:Array(101).fill(doc.tasks[0])}),/1–100/);assert.throws(()=>parseDocument({...doc,tasks:[{...doc.tasks[0],steps:[{type:'fill',selector:'#text',text:'x'.repeat(100001)}]}]}),/100000/);
+});
+
+test('任务导入令牌绑定窗口且限时，一百任务只提交一次，磁盘失败可重试',(t)=>{
+ const {TaskTransfers}=require('../src/main/task-transfer'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-task-token-'));let transfer;
+ try{
+  const store=new Store(dir);let clock=1000;transfer=new TaskTransfers(store,{now:()=>clock});const payload=Array.from({length:100},(_,i)=>({name:'导入 '+i,description:'',steps:[{type:'wait',duration:100}]}));transfer.pending.set('preview',{tasks:payload,time:clock,owner:42});
+  const before=fs.readFileSync(store.file,'utf8'),revision=store.revision();assert.throws(()=>transfer.apply('preview',7),/预览已过期/);assert.equal(transfer.pending.has('preview'),true);assert.equal(store.tasks().length,0);
+  const rename=t.mock.method(fs,'renameSync',()=>{throw new Error('QA disk full');});assert.throws(()=>transfer.apply('preview',42),/disk full/);rename.mock.restore();assert.equal(store.tasks().length,0);assert.equal(store.revision(),revision);assert.equal(fs.readFileSync(store.file,'utf8'),before);assert.equal(transfer.pending.has('preview'),true);
+  const result=transfer.apply('preview',42);assert.equal(result.count,100);assert.equal(new Set(result.ids).size,100);assert.equal(store.revision(),revision+1);assert.equal(new Store(dir).tasks().length,100);assert.equal(store.taskRuns().length,0);assert.throws(()=>transfer.apply('preview',42),/预览已过期/);
+  transfer.pending.set('expired',{tasks:payload,time:clock,owner:42});clock+=10*60*1000;assert.throws(()=>transfer.apply('expired',42),/预览已过期/);assert.equal(transfer.pending.size,0);
+ }finally{transfer?.dispose();fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('任务文件写入限制权限，替换失败保留旧文件并清理临时内容',async(t)=>{
+ const {TaskTransfers}=require('../src/main/task-transfer'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-task-files-'));let transfer;
+ try{
+  const store=new Store(path.join(dir,'data')),task={id:'export-test',name:'可备份任务',description:'',steps:[{type:'fill',selector:'#text',text:'private-file-content'}]};store.saveTask(task);transfer=new TaskTransfers(store);const document=transfer.document([task.id]),file=path.join(dir,'tasks.json');fs.writeFileSync(file,'old-file',{mode:0o644});
+  const rename=t.mock.method(fs.promises,'rename',async()=>{throw new Error('QA rename denied');});await assert.rejects(transfer.write(file,document),/rename denied/);rename.mock.restore();assert.equal(fs.readFileSync(file,'utf8'),'old-file');assert.ok(!fs.readdirSync(dir).some(name=>name.endsWith('.tmp')));
+  await transfer.write(file,document);assert.equal(fs.statSync(file).mode&0o777,0o600);const preview=await transfer.preview(file,12);assert.equal(preview.count,1);assert.ok(!JSON.stringify(preview).includes('private-file-content'));assert.equal(transfer.apply(preview.token,12).count,1);assert.ok(!JSON.stringify(store.activities()).includes('private-file-content'));
+ }finally{transfer?.dispose();fs.rmSync(dir,{recursive:true,force:true});}
+});
