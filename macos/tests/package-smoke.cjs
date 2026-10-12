@@ -58,7 +58,12 @@ let app,origin;
   await manager.evaluate(()=>window.api.syncPause(true));assert.equal((await manager.evaluate(()=>window.api.syncStatus())).paused,true);
   await manager.evaluate(()=>window.api.syncPause(false));await manager.evaluate(()=>window.api.syncStop());assert.equal((await manager.evaluate(()=>window.api.syncStatus())).active,false);
   results.push({name:'打包应用的实际主从窗口同步生命周期',status:'passed'});
-  console.log('Packaged macOS app: 6 checks passed.');
+  const savedTask=await manager.evaluate(url=>window.api.taskSave({name:'安装包任务',steps:[{type:'navigate',url},{type:'waitFor',selector:'body'},{type:'screenshot'}]}),'http://localhost:'+origin.port+'/sync');
+  const [taskRun]=await manager.evaluate(({id,profile})=>window.api.taskStart(id,[profile]),{id:savedTask.id,profile:profile.id});let taskResult;
+  for(let i=0;i<150;i++){taskResult=(await manager.evaluate(()=>window.api.snapshot())).taskRuns.find(run=>run.id===taskRun.id);if(['completed','failed'].includes(taskResult?.state))break;await new Promise(resolve=>setTimeout(resolve,50));}
+  assert.equal(taskResult?.state,'completed',taskResult?.error);assert.equal(taskResult.outputs.length,1);assert.deepEqual([...fs.readFileSync(taskResult.outputs[0].path).subarray(0,8)],[137,80,78,71,13,10,26,10]);
+  results.push({name:'打包应用中的实际任务执行与截图',status:'passed'});
+  console.log('Packaged macOS app: 7 checks passed.');
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
   if(app)await app.close().catch(()=>{});

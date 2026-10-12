@@ -27,6 +27,8 @@ class Store extends EventEmitter {
     this._profilesById = new Map(this._data.profiles.map(p => [p.id, p]));
     this._data.proxies ||= [];
     this._data.extensions ||= [];
+    this._data.tasks ||= [];
+    this._data.taskRuns ||= [];
     this._data.activity ||= [];
     this._data.downloads ||= [];
     this._data.history ||= {};
@@ -186,6 +188,11 @@ class Store extends EventEmitter {
     if (!original) throw new Error("环境不存在");
     return this.create({ ...original, name: original.name + " 副本", seed: undefined, pinned: false, archived: false });
   }
+  tasks() { return this._data.tasks; }
+  taskRuns() { return this._data.taskRuns; }
+  saveTask(task) { const existing=this._data.tasks.findIndex(item=>item.id===task.id);if(existing>=0)this._data.tasks[existing]=task;else this._data.tasks.unshift(task);this._save();return task; }
+  removeTask(id) { this._data.tasks=this._data.tasks.filter(item=>item.id!==id);this._save();return true; }
+  saveTaskRun(run) { const index=this._data.taskRuns.findIndex(item=>item.id===run.id);if(index>=0)this._data.taskRuns[index]=run;else this._data.taskRuns.unshift(run);const active=new Set(['queued','starting','running']);const pending=this._data.taskRuns.filter(item=>active.has(item.state));const finished=this._data.taskRuns.filter(item=>!active.has(item.state));this._data.taskRuns=[...pending,...finished.slice(0,Math.max(0,200-pending.length))].sort((a,b)=>b.createdAt-a.createdAt);this._save(); }
   listExtensions() { return this._data.extensions; }
   saveExtension(record) { this._data.extensions.push(record); this._save(); }
   removeExtension(id) {

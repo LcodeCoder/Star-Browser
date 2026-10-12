@@ -70,9 +70,12 @@ lucide-react/dist/esm/createLucideIcon.mjs:
 lucide-react/dist/esm/icons/archive-restore.mjs:
 lucide-react/dist/esm/icons/archive.mjs:
 lucide-react/dist/esm/icons/arrow-down-to-line.mjs:
+lucide-react/dist/esm/icons/arrow-down.mjs:
 lucide-react/dist/esm/icons/arrow-up-right.mjs:
+lucide-react/dist/esm/icons/arrow-up.mjs:
 lucide-react/dist/esm/icons/book-open.mjs:
 lucide-react/dist/esm/icons/bookmark.mjs:
+lucide-react/dist/esm/icons/camera.mjs:
 lucide-react/dist/esm/icons/check.mjs:
 lucide-react/dist/esm/icons/chevron-down.mjs:
 lucide-react/dist/esm/icons/chevron-right.mjs:
@@ -89,6 +92,7 @@ lucide-react/dist/esm/icons/fingerprint-pattern.mjs:
 lucide-react/dist/esm/icons/folder-open.mjs:
 lucide-react/dist/esm/icons/key-round.mjs:
 lucide-react/dist/esm/icons/layers.mjs:
+lucide-react/dist/esm/icons/list-todo.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/lock-keyhole.mjs:
 lucide-react/dist/esm/icons/monitor.mjs:

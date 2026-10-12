@@ -50,3 +50,8 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 
 
 同步实现参考 AdsPower Synchronizer 的主控/受控模型，读取 Electron WebContents https://www.electronjs.org/docs/latest/api/web-contents 、CDP Input https://chromedevtools.github.io/devtools-protocol/tot/Input/ 和 Electron Clipboard https://www.electronjs.org/docs/latest/api/clipboard 。实际以 before-mouse-event/before-input-event、可信粘贴/滚轮 preload 与 CDP Input 转发，保护仅选定环境、当前网页范围。剪贴板按最新官方 Promise API 等待完成。证据在 test-results/sync-research.json。
+
+
+## 本地任务与配置一致性研究
+
+2026-10-13 05:03（东八区）通过在线搜索读取 AdsPower RPA https://help.adspower.com/docs/rpa 与 Octo Browser 设置 https://docs.octobrowser.net/en/profiles/browser-profile-settings/ 。RPA 文档包含流程编排、搜索、立即执行与任务日志；Star 当前实现本地步骤、环境选择、串行队列、取消、错误与截图，不包含云模板分享、团队权限和定时任务。Octo 文档分别提供 Canvas、Audio、Client Rects 等开关，并提示页面几何修改可能影响网站；下一轮逐项验证真实值与稳定性，优先避免干扰页面功能。

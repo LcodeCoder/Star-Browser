@@ -1,6 +1,6 @@
 {
   "name": "star-browser",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
@@ -22,7 +22,8 @@
     "test:extensions": "node tests/extensions.cjs",
     "test:api": "node tests/local-api.cjs",
     "test:backups": "node tests/backups.cjs",
-    "test:sync": "node tests/synchronizer.cjs"
+    "test:sync": "node tests/synchronizer.cjs",
+    "test:tasks": "node tests/tasks.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",

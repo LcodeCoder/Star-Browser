@@ -3,8 +3,10 @@ const fs=require('node:fs'),fsp=fs.promises,path=require('node:path'),crypto=req
 const {collectFiles,writeArchive,extractArchive,checkPassword}=require('./encrypted-archive');
 const {validateProfile}=require('./profile-validation');
 const {inspectExtension}=require('./extensions');
-const locks=new Set(),UUID=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
-function assertProfileUnlocked(id){if(locks.has(id))throw new Error('这个环境正在备份，请完成后再操作');}
+const locks=new Map(),UUID=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
+function assertProfileUnlocked(id){if(locks.has(id))throw new Error(locks.get(id).reason);}
+function lockProfile(id,owner,reason){assertProfileUnlocked(id);locks.set(id,{owner,reason});}
+function unlockProfile(id,owner){if(locks.get(id)?.owner===owner)locks.delete(id);}
 const excluded=new Set(['Cache','Code Cache','GPUCache','DawnCache','GrShaderCache','ShaderCache','Crashpad','BrowserMetrics','BrowserMetrics-spare.pma','SingletonLock','SingletonCookie','SingletonSocket','LOCK','lockfile','.DS_Store']);
 async function directoryHash(directory){
  const hash=crypto.createHash('sha256'),files=(await collectFiles(directory,'extension')).sort((a,b)=>a.path.localeCompare(b.path));
@@ -29,11 +31,14 @@ class ProfileBackups{
  async export(destination,password,ids){
   checkPassword(password);
   if(!Array.isArray(ids)||!ids.length||ids.length>500||ids.some(id=>!UUID.test(id)||!this.store.get(id)))throw new Error('请选择 1–500 个现有环境');
-  const unique=[...new Set(ids)],active=new Set([...this.runtime().map(row=>row.id),...this.starting()]);
+  const unique=[...new Set(ids)];for(const id of unique)assertProfileUnlocked(id);const active=new Set([...this.runtime().map(row=>row.id),...this.starting()]);
   if(unique.some(id=>active.has(id)))throw new Error('请先停止所选环境，再保存备份');
   return this.run('collecting',async()=>{
-   for(const id of unique)locks.add(id);
+   const locked=[];
    try{
+    const activeNow=new Set([...this.runtime().map(row=>row.id),...this.starting()]);
+    if(unique.some(id=>activeNow.has(id)))throw new Error('请先停止所选环境，再保存备份');
+    for(const id of unique){if(!this.store.get(id))throw new Error('部分环境已不存在，请刷新列表');lockProfile(id,'backup','这个环境正在备份，请完成后再操作');locked.push(id);}
     this.store.flush();const profiles=unique.map(id=>structuredClone(this.store.get(id))),cookies={},histories={},files=[];
     for(const profile of profiles){
      const ses=this.session.fromPartition('persist:tfb-env-'+profile.id);ses.flushStorageData();await ses.cookies.flushStore();
@@ -46,7 +51,7 @@ class ProfileBackups{
     const manifest={kind:'star-environments',version:1,appVersion:this.app.getVersion(),platform:process.platform,createdAt:Date.now(),profiles,cookies,histories,extensions};
     this.progress({phase:'encrypting'});const result=await writeArchive(destination,password,manifest,files,value=>this.progress(value));
     this.store.activity('保存加密备份',`${profiles.length} 个环境`);return {ok:true,...result,count:profiles.length};
-   }finally{for(const id of unique)locks.delete(id);}
+   }finally{for(const id of locked)unlockProfile(id,'backup');}
   });
  }
  async preview(source,password,sender){
@@ -114,4 +119,4 @@ class ProfileBackups{
  async discard(token,sender){const item=this.pending.get(token);if(!item||sender!==undefined&&item.sender!==sender)return false;this.pending.delete(token);clearTimeout(item.timer);await fsp.rm(item.directory,{recursive:true,force:true});return true;}
  async expire(){for(const [token,item]of this.pending)if(Date.now()-item.time>10*60*1000)await this.discard(token);}
 }
-module.exports={ProfileBackups,assertProfileUnlocked};
+module.exports={ProfileBackups,assertProfileUnlocked,lockProfile,unlockProfile};

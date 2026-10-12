@@ -56,10 +56,16 @@ function registerWorkbench(store,{commands,starting}={}) {
   ipcMain.handle('star:syncPause',(e,value)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile&&!([synchronizer.status().master,...synchronizer.status().followers].includes(w._profile.id)))throw new Error('此环境未参与同步');return synchronizer.pause(value);});
   ipcMain.handle('star:syncStop',()=>synchronizer.stop());
   ipcMain.handle('star:syncTile',e=>{managerOnly(e);return synchronizer.tile();});
+  const tasks=new (require('./automation-tasks').AutomationTasks)({app,store,commands,synchronizer});
+  ipcMain.handle('star:taskSave',(e,input)=>{managerOnly(e);return tasks.save(input);});
+  ipcMain.handle('star:taskRemove',(e,id)=>{managerOnly(e);return tasks.remove(id);});
+  ipcMain.handle('star:taskStart',(e,id,profiles)=>{managerOnly(e);return tasks.start(id,profiles);});
+  ipcMain.handle('star:taskCancel',(e,id)=>{managerOnly(e);return tasks.cancel(id);});
+  ipcMain.handle('star:taskOutput',(e,id,index)=>{managerOnly(e);shell.showItemInFolder(tasks.outputFile(id,index));return true;});
   ipcMain.handle('star:snapshot',(e,knownToken)=>{
     const running=runtime(),token=store.revision()+':'+JSON.stringify(running)+(synchronizer.session?':'+JSON.stringify(synchronizer.status()):'');
     if(knownToken===token)return {unchanged:true,token};
-    return {token,synchronizer:synchronizer.status(),profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
+    return {token,tasks:store.tasks(),taskRuns:store.taskRuns(),synchronizer:synchronizer.status(),profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
   });
   const profileAction=async(e,action,ids=[],patch={})=>{
     if(!Array.isArray(ids)||ids.length>500)throw new Error('每次最多操作 500 个环境');

@@ -182,3 +182,24 @@ test('备份拒绝经过认证的路径越界、重复文件和超限帧，不�
   const source=path.join(dir,'source');fs.mkdirSync(source);fs.writeFileSync(path.join(dir,'private'),'private');fs.symlinkSync(path.join(dir,'private'),path.join(source,'link'));assert.deepEqual(await collectFiles(source,'profile'),[]);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('备份准备期间遇到任务或启动冲突，已取得的环境锁完整释放',async()=>{
+ const {ProfileBackups,lockProfile,unlockProfile,assertProfileUnlocked}=require('../src/main/profile-backups');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-backup-lock-'));
+ let b;
+ try{
+  const store=new Store(dir),a=store.create({name:'A'});b=store.create({name:'B'});
+  const runtime=[];const backups=new ProfileBackups({app:{getPath:()=>dir},session:{},store,extensions:{},runtime:()=>runtime});await backups.ready;
+  let ready;backups.ready=new Promise(resolve=>{ready=resolve;});const pending=backups.export(path.join(dir,'never.starbackup'),'test-lock-password',[a.id,b.id]);lockProfile(b.id,'other','正在执行任务');ready();await assert.rejects(pending,/执行任务/);assert.doesNotThrow(()=>assertProfileUnlocked(a.id));assert.throws(()=>assertProfileUnlocked(b.id),/执行任务/);unlockProfile(b.id,'other');
+  backups.ready=new Promise(resolve=>{ready=resolve;});const started=backups.export(path.join(dir,'never.starbackup'),'test-lock-password',[a.id]);runtime.push({id:a.id});ready();await assert.rejects(started,/停止所选环境/);assert.doesNotThrow(()=>assertProfileUnlocked(a.id));assert.equal(fs.existsSync(path.join(dir,'never.starbackup')),false);
+ }finally{if(b)unlockProfile(b.id,'other');fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('执行记录达到保留上限时，活动任务仍能更新且重启保留',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-task-retention-'));
+ try{
+  const store=new Store(dir);store.saveTaskRun({id:'active',state:'running',createdAt:1,step:1});
+  store.transaction(()=>{for(let index=0;index<250;index++)store.saveTaskRun({id:'finished-'+index,state:'completed',createdAt:index+2});});
+  assert.equal(store.taskRuns().length,200);assert.ok(store.taskRuns().some(run=>run.id==='active'));store.saveTaskRun({id:'active',state:'running',createdAt:1,step:2});assert.equal(new Store(dir).taskRuns().find(run=>run.id==='active').step,2);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
