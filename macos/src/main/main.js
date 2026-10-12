@@ -54,6 +54,7 @@ let store;
 const profileCommands=new Map(),startupJobs=new Map();
 function registerProfileCommand(name,handler){
   const run=(event,...args)=>{
+    if(["browse","launch","update","remove"].includes(name))require("./profile-backups").assertProfileUnlocked(args[0]);
     if(!["browse","launch"].includes(name))return handler(event,...args);
     const key=name+":"+args[0];if(startupJobs.has(key))return startupJobs.get(key);
     const job=Promise.resolve().then(()=>handler(event,...args));startupJobs.set(key,job);
@@ -630,7 +631,7 @@ function createWindow() {
 
 function startPro() {
   registerIpc();
-  require("./workbench").registerWorkbench(store,{commands:(name,args)=>{const handler=profileCommands.get(name);if(!handler)throw new Error("操作不存在");return handler(null,...args);}});
+  require("./workbench").registerWorkbench(store,{starting:()=>[...startupJobs.keys()].map(key=>key.slice(key.indexOf(":")+1)),commands:(name,args)=>{const handler=profileCommands.get(name);if(!handler)throw new Error("操作不存在");return handler(null,...args);}});
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

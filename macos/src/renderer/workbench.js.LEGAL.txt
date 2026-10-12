@@ -73,6 +73,7 @@ lucide-react/dist/esm/icons/arrow-down-to-line.mjs:
 lucide-react/dist/esm/icons/arrow-up-right.mjs:
 lucide-react/dist/esm/icons/book-open.mjs:
 lucide-react/dist/esm/icons/bookmark.mjs:
+lucide-react/dist/esm/icons/check.mjs:
 lucide-react/dist/esm/icons/chevron-down.mjs:
 lucide-react/dist/esm/icons/chevron-right.mjs:
 lucide-react/dist/esm/icons/chevron-left.mjs:
@@ -89,6 +90,7 @@ lucide-react/dist/esm/icons/folder-open.mjs:
 lucide-react/dist/esm/icons/key-round.mjs:
 lucide-react/dist/esm/icons/layers.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
+lucide-react/dist/esm/icons/lock-keyhole.mjs:
 lucide-react/dist/esm/icons/monitor.mjs:
 lucide-react/dist/esm/icons/moon.mjs:
 lucide-react/dist/esm/icons/network.mjs:

@@ -40,3 +40,10 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 - Electron Session：https://www.electronjs.org/docs/latest/api/session 。权限 check/request 联合处理；请求来源用于提示，明确拒绝或允许。
 
 完整云同步和团队身份依然需要服务端，当前未提供。下一轮优先本地任务与可恢复数据工作流，不能以本地占位界面称为云服务。
+
+
+## 备份恢复与同步研究
+
+2026-10-13 04:27（东八区）成功取得并阅读 Node crypto https://nodejs.org/api/crypto.html 、Electron Session https://www.electronjs.org/docs/latest/api/session 、Chrome Manifest key https://developer.chrome.com/docs/extensions/reference/manifest/key 、AdsPower Synchronizer https://help.adspower.com/docs/synchronizer 与 Octo 官方目录 https://docs.octobrowser.net/llms.txt 。抓取证据：test-results/backups-research.json。
+
+备份使用 scrypt、AES-GCM、随机 salt/nonce 与认证头，流式压缩，解密完整验证后才恢复；已测试错误密码、篡改、路径越界、重复与超限。Chrome key 用于稳定扩展身份，自有扩展副本缺 key 时生成独立 RSA 公钥，不上传开发者后台。AdsPower 的主窗口/受控窗口模型用于下一轮同步交互参考，功能状态仍以实际实现和测试为准。

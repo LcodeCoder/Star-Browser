@@ -117,9 +117,9 @@ class Store extends EventEmitter {
     return this._profilesById.get(id);
   }
 
-  create(partial) {
+  create(partial, id = crypto.randomUUID()) {
     partial = validateProfile(partial, true);
-    const id = crypto.randomUUID();
+    if (!/^[a-f\d-]{36}$/i.test(id) || this.get(id)) throw new Error("环境标识无效或已存在");
     const now = Date.now();
     const profile = {
       id,
@@ -238,6 +238,11 @@ class Store extends EventEmitter {
   historyTop(id,n=8) {
     const grouped=new Map();for(const row of this.history(id)){try{const host=new URL(row.url).host;if(grouped.has(host))grouped.get(host).count++;else grouped.set(host,{...row,count:1});}catch{}}
     return [...grouped.values()].sort((a,b)=>b.count-a.count||b.time-a.time).slice(0,Math.min(Number(n)||8,30));
+  }
+  restoreHistory(id, rows) {
+    if (!this.get(id)) throw new Error("环境不存在");
+    this._data.history[id] = (Array.isArray(rows) ? rows : []).filter(row => /^https?:\/\//i.test(row?.url || "")).slice(0,2000).map(row => ({id:crypto.randomUUID(),url:String(row.url).slice(0,4096),title:String(row.title || "").slice(0,500),time:Number.isFinite(row.time)?row.time:Date.now()}));
+    this._save();
   }
   clearHistory(id) { this._data.history[id]=[];this._save(); }
 

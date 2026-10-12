@@ -38,12 +38,20 @@ let app,origin;
   assert.ok((await manager.evaluate(()=>window.api.localApiDocs())).includes('/v1/profiles/<id>/start'));
   const api=await manager.evaluate(()=>window.api.localApiConfigure({enabled:true,port:0}));
   const token=JSON.parse(fs.readFileSync(path.join(data,'local-api.json'),'utf8')).token;
-  const response=await fetch(api.url+'/v1/health',{headers:{Authorization:'Bearer '+token}});assert.equal(response.status,200);assert.equal((await response.json()).data.version,'0.3.0');
+  const response=await fetch(api.url+'/v1/health',{headers:{Authorization:'Bearer '+token}});assert.equal(response.status,200);assert.equal((await response.json()).data.version,await app.evaluate(({app})=>app.getVersion()));
   await manager.evaluate(()=>window.api.localApiConfigure({enabled:false}));
   results.push({name:'打包应用的 Cookie、IPC 与实际本地 API',status:'passed'});
   await browser.screenshot({path:path.join(root,'test-results/packaged-browser.png')});
   await manager.screenshot({path:path.join(root,'test-results/packaged-management.png')});
-  console.log('Packaged macOS app: 4 checks passed.');
+  await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);
+  const backupFile=path.join(data,'package.starbackup');
+  await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},backupFile);
+  assert.equal((await manager.evaluate(({id})=>window.api.backupExport([id],'package-test-password'),{id:profile.id})).count,1);
+  const backupPreview=await manager.evaluate(()=>window.api.backupPreview('package-test-password'));assert.equal(backupPreview.count,1);
+  const restored=await manager.evaluate(token=>window.api.backupRestore(token),backupPreview.token);assert.equal(restored.count,1);assert.notEqual(restored.profiles[0].id,profile.id);
+  assert.equal((await manager.evaluate(id=>window.api.cookieCount(id),restored.profiles[0].id)).count,1);
+  results.push({name:'打包应用的实际加密环境备份与恢复',status:'passed'});
+  console.log('Packaged macOS app: 5 checks passed.');
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
   if(app)await app.close().catch(()=>{});

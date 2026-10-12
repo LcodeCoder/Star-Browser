@@ -4,11 +4,11 @@
 
 | 分类 | 官方参考 | 本项目基线 | 待完善 |
 | --- | --- | --- | --- |
-| 环境隔离、稳定配置 | AdsPower、GoLogin | 独立 session/Chrome 数据目录、首脚本 JS/CDP、配置导入导出与 Cookie 备份 | 完整数据迁移、存储加密 |
+| 环境隔离、稳定配置 | AdsPower、GoLogin | 独立 session/Chrome 数据目录、首脚本 JS/CDP、配置导入导出、带密码的加密数据备份与独立恢复 | 跨平台迁移、完整系统密钥数据 |
 | 指纹参数 | Multilogin、BitBrowser | JS 参数与 CDP UA/Client Hints/语言/时区，实际内核版本，硬件校验 | Worker/WebGPU 等逐项验证、内核边界 |
 | 高频工作台 | GoLogin、Dolphin Anty | 搜索/分组/标签/详情、原子批量、置顶、归档、完整命令定位与一万环境分页 | 持续测量启动、后台资源与筛选性能 |
 | 代理管理 | AdsPower、Octo Browser | HTTP/HTTPS/SOCKS5、鉴权网关、代理库/检测/分配/批量录入、故障阻断 | 真实供应商与 IPv6 网络测试 |
-| Cookie/书签/历史 | AdsPower、Octo | Cookie 备份导入清空、书签、每环境历史、标签恢复、真实下载控制与权限提示 | 完整环境数据备份恢复 |
+| Cookie/书签/历史 | AdsPower、Octo | Cookie 备份导入清空、书签、每环境历史、标签恢复、真实下载控制与权限提示、Cookie/网页存储备份恢复 | 跨设备 Chrome 登录及系统密钥边界 |
 | 自动化 | AdsPower、Kameleo | 独立 Chrome 的本地 CDP pipe、默认关闭且带密钥的本地 REST API | 可验证的任务闭环 |
 | 同步操作 | AdsPower、Dolphin Anty、BitBrowser | 未实现 | 明确的主从控制与退出流程 |
 | 扩展 | Octo、GoLogin | 用户扩展库、权限预览、每环境选择、自有副本与隔离存储 | Electron 仅支持扩展子集，任意扩展需单独验证 |
@@ -24,7 +24,7 @@
 - 指纹一致性：使用实际 Chromium/Chrome 版本、CDP UA/Client Hints/时区/语言覆盖、硬件手动设置校验。JavaScript 覆盖仍有能力边界。
 - 存储：原子写入、备份恢复、损坏文件保留、历史去重与延迟保存。
 
-新增闭环以 verification.md 的对应测试记录为准。0.3.0 的扩展管理、本地 API、网站权限和大规模性能已完成专项验证；同步操作和完整数据恢复继续迭代。
+新增闭环以 verification.md 的对应测试记录为准。0.4.0 的加密环境备份、扩展管理、本地 API、网站权限和大规模性能已完成专项验证；同步操作继续迭代。
 
 本轮可读官方研究见 [official-research.md](official-research.md)。
 

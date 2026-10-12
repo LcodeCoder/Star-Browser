@@ -7,7 +7,7 @@ const {validateProfile,validateProxy,importProfiles}=require('./profile-validati
 const {getLaunchedBrowser,getLaunchedBrowsers,findChrome}=require('./launcher');
 const {parseProxyInput}=require('./proxy-parse');
 const pendingImports=new Map(), downloadItems=new Map();
-function registerWorkbench(store,{commands}={}) {
+function registerWorkbench(store,{commands,starting}={}) {
   const extensions=require('./extensions').initExtensionLibrary(app.getPath('userData'),store),pendingExtensions=new Map();
   ipcMain.handle('star:extensionPreview',async(e)=>{
     const choice=await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender),{title:'选择已解压扩展',properties:['openDirectory']});if(choice.canceled)return {canceled:true};
@@ -23,6 +23,7 @@ function registerWorkbench(store,{commands}={}) {
   ipcMain.handle('star:extensionRemove',async(e,id)=>{
     const assigned=new Set(store.list().filter(p=>p.extensions?.includes(id)).map(p=>p.id));
     const loaded=BrowserWindow.getAllWindows().some(w=>!w.isDestroyed()&&w._profile?.extensions?.includes(id))||getLaunchedBrowsers().some(([,browser])=>!browser.pipe.closed&&browser.userExtensions?.some(item=>item.id===id));
+    for(const profileId of assigned)require('./profile-backups').assertProfileUnlocked(profileId);
     if(loaded||runtime().some(row=>assigned.has(row.id)))throw new Error('请先停止使用该扩展的环境，再移除');
     await extensions.remove(id);return true;
   });
@@ -53,6 +54,7 @@ function registerWorkbench(store,{commands}={}) {
   const profileAction=async(e,action,ids=[],patch={})=>{
     if(!Array.isArray(ids)||ids.length>500)throw new Error('每次最多操作 500 个环境');
     const unique=[...new Set(ids)];
+    for(const id of unique)require('./profile-backups').assertProfileUnlocked(id);
     if(!unique.every(id=>store.get(id)))throw new Error('部分环境已不存在，请刷新列表');
     if(['clone','update','archive','restore','regenerate'].includes(action)){
       const activeIds=new Set(runtime().map(row=>row.id));
@@ -90,6 +92,20 @@ function registerWorkbench(store,{commands}={}) {
   ipcMain.handle('star:action',profileAction);
   const localApi=new (require('./local-api').LocalApi)(app.getPath('userData'),{store,runtime,version:app.getVersion(),commands:(name,args)=>name==='stop'?profileAction(null,'stop',[args[0]]):commands(name,args)});
   const managerOnly=e=>{const w=BrowserWindow.fromWebContents(e.sender);if(!w||w._profile||!e.senderFrame?.url.startsWith('file:'))throw new Error('此操作需要在工作台中执行');};
+  const backups=new (require('./profile-backups').ProfileBackups)({app,session,store,extensions,runtime:()=>[...runtime(),...BrowserWindow.getAllWindows().filter(w=>!w.isDestroyed()&&w._profile).map(w=>({id:w._profile.id})),...getLaunchedBrowsers().filter(([,browser])=>browser.child.exitCode===null&&browser.child.signalCode===null).map(([id])=>({id}))],starting});
+  ipcMain.handle('star:backupStatus',e=>{managerOnly(e);return backups.status();});
+  ipcMain.handle('star:backupExport',async(e,ids,password)=>{
+    managerOnly(e);require('./encrypted-archive').checkPassword(password);
+    const result=await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender),{title:'保存加密环境备份',defaultPath:'Star-Browser-'+new Date().toISOString().slice(0,10)+'.starbackup',filters:[{name:'Star Browser 备份',extensions:['starbackup']}]});
+    if(result.canceled)return {canceled:true};return backups.export(result.filePath,password,ids);
+  });
+  ipcMain.handle('star:backupPreview',async(e,password)=>{
+    managerOnly(e);require('./encrypted-archive').checkPassword(password);
+    const result=await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender),{title:'选择加密环境备份',properties:['openFile'],filters:[{name:'Star Browser 备份',extensions:['starbackup']}]});
+    if(result.canceled)return {canceled:true};return backups.preview(result.filePaths[0],password,e.sender.id);
+  });
+  ipcMain.handle('star:backupRestore',async(e,token)=>{managerOnly(e);return backups.restore(token,e.sender.id);});
+  ipcMain.handle('star:backupDiscard',async(e,token)=>{managerOnly(e);return backups.discard(token,e.sender.id);});
   ipcMain.handle('star:apiStatus',e=>{managerOnly(e);return localApi.status();});
   ipcMain.handle('star:apiConfigure',async(e,patch)=>{managerOnly(e);return localApi.configure(patch);});
   ipcMain.handle('star:apiCopyToken',e=>{managerOnly(e);clipboard.writeText(localApi.token());return true;});

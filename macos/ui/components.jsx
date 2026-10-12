@@ -12,8 +12,8 @@ function Button({ children, variant = "", className = "", icon: Icon, ...props }
 function IconButton({ icon: Icon, label, ...props }) {
   return <button className="icon-button" aria-label={label} title={label} {...props}><Icon size={17} /></button>;
 }
-function Modal({ open, onOpenChange, title, description, children, footer, wide = false, id }) {
-  return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}><DialogPrimitive.Portal><DialogPrimitive.Overlay className="dialog-overlay" /><DialogPrimitive.Content className={"dialog-content" + (wide ? " wide" : "")} id={id}><div className="dialog-header"><div><DialogPrimitive.Title className="dialog-title">{title}</DialogPrimitive.Title><DialogPrimitive.Description className="muted dialog-description">{description}</DialogPrimitive.Description></div><DialogPrimitive.Close asChild><IconButton icon={X} label="关闭" /></DialogPrimitive.Close></div><div className="dialog-body">{children}</div>{footer && <div className="dialog-footer">{footer}</div>}</DialogPrimitive.Content></DialogPrimitive.Portal></DialogPrimitive.Root>;
+function Modal({ open, onOpenChange, title, description, children, footer, wide = false, id, dismissible = true }) {
+  return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}><DialogPrimitive.Portal><DialogPrimitive.Overlay className="dialog-overlay" /><DialogPrimitive.Content className={"dialog-content" + (wide ? " wide" : "")} id={id} onEscapeKeyDown={e=>!dismissible&&e.preventDefault()} onPointerDownOutside={e=>!dismissible&&e.preventDefault()}><div className="dialog-header"><div><DialogPrimitive.Title className="dialog-title">{title}</DialogPrimitive.Title><DialogPrimitive.Description className="muted dialog-description">{description}</DialogPrimitive.Description></div><DialogPrimitive.Close asChild><IconButton icon={X} label="关闭" disabled={!dismissible} /></DialogPrimitive.Close></div><div className="dialog-body">{children}</div>{footer && <div className="dialog-footer">{footer}</div>}</DialogPrimitive.Content></DialogPrimitive.Portal></DialogPrimitive.Root>;
 }
 function Menu({ items, label = "更多操作", children }) {
   return <DropdownPrimitive.Root><DropdownPrimitive.Trigger asChild>{children || <IconButton icon={MoreHorizontal} label={label} />}</DropdownPrimitive.Trigger><DropdownPrimitive.Portal><DropdownPrimitive.Content className="dropdown-content" align="end" sideOffset={5}>{items.map((item, i) => item.separator ? <DropdownPrimitive.Separator key={i} className="dropdown-separator" /> : <DropdownPrimitive.Item key={i} className={"dropdown-item" + (item.danger ? " danger" : "")} disabled={item.disabled} onSelect={item.action}>{item.icon && <item.icon size={15} />}<span>{item.label}</span>{item.hint && <span className="shortcut">{item.hint}</span>}</DropdownPrimitive.Item>)}</DropdownPrimitive.Content></DropdownPrimitive.Portal></DropdownPrimitive.Root>;
@@ -24,8 +24,8 @@ function Tabs({ value, onValueChange, items }) {
 function Field({ label, id, children, hint, className = "" }) {
   return <label className={"field " + className} htmlFor={id}><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
 }
-function Empty({ icon: Icon, title, description, children }) {
-  return <div className="empty-state">{Icon && <div className="empty-icon"><Icon size={29} strokeWidth={1.5} /></div>}<h2>{title}</h2><p>{description}</p>{children && <div className="empty-actions">{children}</div>}</div>;
+function Empty({ icon: Icon, title, description, children, action }) {
+  return <div className="empty-state">{Icon && <div className="empty-icon"><Icon size={29} strokeWidth={1.5} /></div>}<h2>{title}</h2><p>{description}</p>{(children||action) && <div className="empty-actions">{children||action}</div>}</div>;
 }
 function Badge({ children, status = "" }) {
   return <span className={"status-badge " + status}>{status && <span className="status-dot" />}{children}</span>;

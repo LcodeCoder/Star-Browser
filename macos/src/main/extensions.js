@@ -46,7 +46,13 @@ class ExtensionLibrary{
     if(!stat.isFile()||stat.isSymbolicLink())throw new Error('扩展文件已更改，请重新选择目录');
     await fs.promises.mkdir(path.dirname(target),{recursive:true,mode:0o700});await fs.promises.copyFile(source,target);await fs.promises.chmod(target,0o600);
    }
-   const record={id,...inspected.metadata,createdAt:Date.now()};
+   const manifestFile=path.join(destination,'manifest.json'),manifest=JSON.parse(await fs.promises.readFile(manifestFile,'utf8'));
+   if(!manifest.key){
+    const publicKey=await new Promise((resolve,reject)=>crypto.generateKeyPair('rsa',{modulusLength:2048,publicKeyEncoding:{type:'spki',format:'der'},privateKeyEncoding:{type:'pkcs8',format:'der'}},(error,key)=>error?reject(error):resolve(key)));
+    manifest.key=publicKey.toString('base64');await fs.promises.writeFile(manifestFile,JSON.stringify(manifest,null,2),{mode:0o600});
+   }
+   const finalMetadata=(await inspectExtension(destination)).metadata;
+   const record={id,...finalMetadata,createdAt:Date.now()};
    this.store.transaction(()=>{this.store.saveExtension(record);this.store.activity('添加扩展',record.name);});return record;
   }catch(error){await fs.promises.rm(destination,{recursive:true,force:true});throw error;}
  }

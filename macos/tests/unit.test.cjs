@@ -155,3 +155,30 @@ test('扩展导入保存自有副本，缺清单或符号链接失败不会留�
   const p=store.create({name:'Extension profile',extensions:[record.id]});assert.equal(library.resolve(p).length,1);await library.remove(record.id);assert.deepEqual(store.get(p.id).extensions,[]);assert.equal(fs.existsSync(library.directory(record.id)),false);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('加密备份流式往返、文件权限、错误密码和篡改清理',async()=>{
+ const {writeArchive,extractArchive,collectFiles}=require('../src/main/encrypted-archive');
+ const crypto=require('node:crypto'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-archive-'));
+ try{
+  const source=path.join(dir,'source');fs.mkdirSync(source);const bytes=crypto.randomBytes(2*1024*1024);fs.writeFileSync(path.join(source,'data.bin'),bytes);
+  const archive=path.join(dir,'data.starbackup'),manifest={kind:'test',secret:'metadata-secret'};
+  await writeArchive(archive,'test-password',manifest,await collectFiles(source,'profile'));
+  assert.equal(fs.statSync(archive).mode&0o777,0o600);assert.equal(fs.readFileSync(archive).includes(Buffer.from('metadata-secret')),false);
+  const restored=await extractArchive(archive,'test-password',path.join(dir,'restored'));assert.deepEqual(restored.manifest,manifest);assert.deepEqual(fs.readFileSync(path.join(dir,'restored/profile/data.bin')),bytes);
+  const wrong=path.join(dir,'wrong');await assert.rejects(extractArchive(archive,'wrong-password',wrong));assert.equal(fs.existsSync(wrong),false);
+  const corrupted=fs.readFileSync(archive);corrupted[corrupted.length-1]^=1;fs.writeFileSync(path.join(dir,'corrupt.starbackup'),corrupted);
+  const bad=path.join(dir,'bad');await assert.rejects(extractArchive(path.join(dir,'corrupt.starbackup'),'test-password',bad),/损坏/);assert.equal(fs.existsSync(bad),false);
+  const preserved=path.join(dir,'preserved');fs.mkdirSync(preserved);fs.writeFileSync(path.join(preserved,'important'),'keep');await assert.rejects(extractArchive(archive,'test-password',preserved));assert.equal(fs.readFileSync(path.join(preserved,'important'),'utf8'),'keep');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('备份拒绝经过认证的路径越界、重复文件和超限帧，不跟随符号链接',async()=>{
+ const crypto=require('node:crypto'),zlib=require('node:zlib'),{extractArchive,collectFiles}=require('../src/main/encrypted-archive');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-archive-guard-'));
+ function frame(p,size,content=Buffer.alloc(0)){const json=Buffer.from(JSON.stringify({path:p,size})),length=Buffer.alloc(4);length.writeUInt32BE(json.length);return Buffer.concat([length,json,content]);}
+ function archive(records,file){const salt=crypto.randomBytes(16),iv=crypto.randomBytes(12),header=Buffer.concat([Buffer.from('STARBAK1'),salt,iv]),key=crypto.scryptSync('test-password',salt,32,{N:65536,r:8,p:1,maxmem:128*1024*1024}),cipher=crypto.createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(header);fs.writeFileSync(file,Buffer.concat([header,cipher.update(zlib.gzipSync(records)),cipher.final(),cipher.getAuthTag()]));}
+ try{
+  for(const [name,records]of [['traversal',frame('../outside',0)],['absolute',frame('/tmp/outside',0)],['duplicate',Buffer.concat([frame('manifest.json',2,Buffer.from('{}')),frame('manifest.json',0)])],['limit',frame('large',2*1024**3+1)]]){const file=path.join(dir,name+'.starbackup');archive(records,file);await assert.rejects(extractArchive(file,'test-password',path.join(dir,name)));assert.equal(fs.existsSync(path.join(dir,name)),false);}
+  const source=path.join(dir,'source');fs.mkdirSync(source);fs.writeFileSync(path.join(dir,'private'),'private');fs.symlinkSync(path.join(dir,'private'),path.join(source,'link'));assert.deepEqual(await collectFiles(source,'profile'),[]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
