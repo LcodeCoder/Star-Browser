@@ -56,6 +56,7 @@ function registerWorkbench(store,{commands,starting}={}) {
   ipcMain.handle('star:syncPause',(e,value)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile&&!([synchronizer.status().master,...synchronizer.status().followers].includes(w._profile.id)))throw new Error('此环境未参与同步');return synchronizer.pause(value);});
   ipcMain.handle('star:syncStop',()=>synchronizer.stop());
   ipcMain.handle('star:syncTile',e=>{managerOnly(e);return synchronizer.tile();});
+  ipcMain.handle('star:fingerprintAudit',async(e,id)=>{managerOnly(e);const current=synchronizer.activeGuest(id);if(current)return require('./fingerprint-audit').auditElectron(current.wc);const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return require('./fingerprint-audit').auditChrome(chrome);throw new Error('请先启动这个环境并打开网页');});
   const tasks=new (require('./automation-tasks').AutomationTasks)({app,store,commands,synchronizer});
   ipcMain.handle('star:taskSave',(e,input)=>{managerOnly(e);return tasks.save(input);});
   ipcMain.handle('star:taskRemove',(e,id)=>{managerOnly(e);return tasks.remove(id);});

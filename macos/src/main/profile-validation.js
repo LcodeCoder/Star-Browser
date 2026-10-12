@@ -37,6 +37,7 @@ function validateProfile(input = {}, creating = false) {
         out.fingerprint[key] = Number(fp[key]);
       }
     }
+    if(fp.noise!==undefined){out.fingerprint.noise={};for(const key of ['canvas','audio','webgl','clientRects']){if(fp.noise[key]!==undefined){if(typeof fp.noise[key]!=='boolean')throw new Error('指纹策略需选择开启或关闭');out.fingerprint.noise[key]=fp.noise[key];}}}
     if (fp.screen?.width || fp.screen?.height) {
       const width = Number(fp.screen.width), height = Number(fp.screen.height);
       if (!Number.isInteger(width) || !Number.isInteger(height) || width<320 || width>7680 || height<320 || height>4320) throw new Error('屏幕尺寸无效');

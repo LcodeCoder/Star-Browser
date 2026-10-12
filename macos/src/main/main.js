@@ -71,6 +71,61 @@ const FP_CORE_SRC = fs.readFileSync(
   "utf-8",
 );
 
+  function bindLangHeader(wc, lang) {
+    try {
+      if (!wc || wc.isDestroyed()) return;
+      const ses = wc.session;
+      if (!ses) return;
+      if (lang) ses.__tfbLang = String(lang);
+      if (ses.__tfbHeaderBound) return;
+      ses.__tfbHeaderBound = true;
+      // 先捕获 session 引用：webContents 销毁后访问 wc.session getter 会抛
+      // "Object has been destroyed"（main.js:431 崩溃根因），回调内只用 _sess 即可避开。
+      const _sess = ses;
+      _sess.webRequest.onBeforeSendHeaders((details, callback) => {
+        try {
+          const L = _sess.__tfbLang || "en-US";
+          const hdrs = details.requestHeaders || {};
+          hdrs["Accept-Language"] = L + "," + L.split("-")[0] + ";q=0.9";
+          const fp=_sess.__tfbFp;
+          if(fp){const meta=fingerprintMetadata(fp);hdrs["User-Agent"]=fp.userAgent;for(const key of Object.keys(hdrs)){const lower=key.toLowerCase();if(lower==='sec-ch-ua')hdrs[key]=meta.brands.map(b=>`"${b.brand}";v="${b.version}"`).join(', ');if(lower==='sec-ch-ua-platform')hdrs[key]=JSON.stringify(meta.platform);if(lower==='sec-ch-ua-mobile')hdrs[key]=meta.mobile?'?1':'?0';}}
+
+          callback({ requestHeaders: hdrs });
+        } catch (_) {
+          try {
+            callback({ requestHeaders: details.requestHeaders || {} });
+          } catch (_) {}
+        }
+      });
+    } catch (_) {}
+  }
+
+// Prepare each guest once, after its initial local document has a renderer.
+// Navigation waits for this promise so the first remote script uses native CDP settings.
+function prepareGuestFingerprint(wc, fingerprint) {
+  if (wc.__tfbFpInjected) return Promise.resolve(true);
+  if (wc.__starFingerprintPreparing) return wc.__starFingerprintPreparing;
+  const source=FP_CORE_SRC+"\n;try{if(window.installFingerprint)window.installFingerprint("+JSON.stringify(fingerprint)+");}catch(e){}";
+  const job=(async()=>{
+    const api=wc.debugger;if(!api.isAttached())api.attach("1.3");
+    const send=(method,params)=>new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error("浏览器配置超时："+method)),5000);
+      api.sendCommand(method,params).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+    });
+    await send("Page.enable",{});
+    await applyProtocol(send,fingerprint);
+    await require("./fingerprint-targets").bindElectronTargets(wc,fingerprint,source);
+    await send("Page.addScriptToEvaluateOnNewDocument",{source});
+    wc.__tfbFingerprint=fingerprint;wc.__tfbFpInjected=true;
+    bindLangHeader(wc,fingerprint.language);
+    dbg("GUEST-FP-READY id="+wc.id+" tz="+fingerprint.timezone+" lang="+fingerprint.language);
+    return true;
+  })();
+  wc.__starFingerprintPreparing=job;
+  job.finally(()=>{if(wc.__starFingerprintPreparing===job)delete wc.__starFingerprintPreparing;}).catch(()=>{});
+  return job;
+}
+
 // 离线本地起始页（保证一打开就有内容，不会白屏；被墙站点 whoer/google 不再作为默认页）
 // 关键：用 data: URL 加载主页，避免打包后 webview(persist 分区) 加载 asar 内 file:// 可能失败导致白屏
 const HOME_HTML = fs.readFileSync(
@@ -1133,34 +1188,7 @@ function registerIpc() {
   // ⚠️ 必须在「首次导航之前」完成绑定：否则第一个文档请求的头仍是本机 zh-CN，
   // whoer 会据此把站点重定向到中文版 /zh/，并留下语言偏好（实测现象：whoer.com/zh/）。
   // 故早期注入路径(web-contents-created)与 guest:setProxy 都要调用它。
-  function bindLangHeader(wc, lang) {
-    try {
-      if (!wc || wc.isDestroyed()) return;
-      const ses = wc.session;
-      if (!ses) return;
-      if (lang) ses.__tfbLang = String(lang);
-      if (ses.__tfbHeaderBound) return;
-      ses.__tfbHeaderBound = true;
-      // 先捕获 session 引用：webContents 销毁后访问 wc.session getter 会抛
-      // "Object has been destroyed"（main.js:431 崩溃根因），回调内只用 _sess 即可避开。
-      const _sess = ses;
-      _sess.webRequest.onBeforeSendHeaders((details, callback) => {
-        try {
-          const L = _sess.__tfbLang || "en-US";
-          const hdrs = details.requestHeaders || {};
-          hdrs["Accept-Language"] = L + "," + L.split("-")[0] + ";q=0.9";
-          const fp=_sess.__tfbFp;
-          if(fp){const meta=fingerprintMetadata(fp);hdrs["User-Agent"]=fp.userAgent;for(const key of Object.keys(hdrs)){const lower=key.toLowerCase();if(lower==='sec-ch-ua')hdrs[key]=meta.brands.map(b=>`"${b.brand}";v="${b.version}"`).join(', ');if(lower==='sec-ch-ua-platform')hdrs[key]=JSON.stringify(meta.platform);if(lower==='sec-ch-ua-mobile')hdrs[key]=meta.mobile?'?1':'?0';}}
 
-          callback({ requestHeaders: hdrs });
-        } catch (_) {
-          try {
-            callback({ requestHeaders: details.requestHeaders || {} });
-          } catch (_) {}
-        }
-      });
-    } catch (_) {}
-  }
 
   // 为 webview guest 设置代理（Electron 31 移除了 webview.getWebContents，改由主进程用 webContentsId 设置）
   // 关键：Chromium 不支持「带账号密码的 SOCKS5」——凭据会被静默丢弃、login 事件对 SOCKS5 也不触发。
@@ -1240,68 +1268,12 @@ function registerIpc() {
     }
   });
 
-  // 指纹注入（CDP 主世界同步）：把 fp-core 注册为「新文档开头脚本」，早于 whoer/browserscan 等检测脚本执行，
-  // 确保 navigator.language / 时区 / Intl 等在被读取前已被伪装。替代 webFrame.executeJavaScript 的异步注入（会被抢读）。
-  ipcMain.handle("guest:injectFingerprint", async (e, id, fingerprint) => {
-    try {
-      const { webContents } = require("electron");
-      const wc = webContents.fromId(Number(id));
-      if (!wc || wc.isDestroyed()) return false;
-      if (wc.__tfbFpInjected) return true; // 同一 webview 只注入一次
-      const injectCode =
-        FP_CORE_SRC +
-        "\n;try{ if(window.installFingerprint) window.installFingerprint(" +
-        JSON.stringify(fingerprint) +
-        "); }catch(e){}";
-      const dbg2 = wc.debugger;
-      if (!dbg2) return false;
-      if (!dbg2.isAttached()) {
-        try {
-          dbg2.attach("1.3");
-        } catch (_) {}
-      }
-      let tries = 0;
-      const doInject = () =>
-        dbg2
-          .sendCommand("Page.enable")
-          .catch(() => {})
-          .then(() => applyProtocol((method,params)=>dbg2.sendCommand(method,params),fingerprint))
-          .then(() =>
-            dbg2.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
-              source: injectCode,
-            }),
-          );
-      const attempt = () =>
-        doInject()
-          .then(() => {
-            wc.__tfbFpInjected = true;
-            // 同步 Accept-Language 请求头语言，使其与本次注入的指纹语言保持一致（覆盖 onAlign 重建后的语言变化）
-            try {
-              bindLangHeader(wc, fingerprint && fingerprint.language);
-            } catch (_) {}
-            dbg(
-              "GUEST-FP-INJECT id=" +
-                id +
-                " ok lang=" +
-                (fingerprint && fingerprint.language) +
-                " tz=" +
-                (fingerprint && fingerprint.timezone),
-            );
-            return true;
-          })
-          .catch((err) => {
-            if (tries++ < 6 && !wc.isDestroyed()) {
-              setTimeout(attempt, 400);
-              return false;
-            }
-            dbg("GUEST-FP-INJECT FAIL id=" + id + " " + (err && err.message));
-            return false;
-          });
-      return await attempt();
-    } catch (err) {
-      dbg("GUEST-FP-INJECT FAIL id=" + id + " " + (err && err.message));
-      return false;
-    }
+  ipcMain.handle("guest:injectFingerprint", async (e, id) => {
+    const wc=require("electron").webContents.fromId(Number(id));
+    if(!wc||wc.isDestroyed()||wc.getType()!=="webview"||wc.hostWebContents!==e.sender)throw new Error("无法配置此浏览器标签");
+    const fingerprint=wc.session.__tfbFp;
+    if(!fingerprint)throw new Error("环境配置尚未准备好，请重试");
+    return prepareGuestFingerprint(wc,fingerprint);
   });
 
   // 拦截 webview guest 的弹窗（target=_blank / window.open）：拒绝建独立窗口，把 URL 发回宿主渲染端开新标签。
@@ -2606,102 +2578,10 @@ app.whenReady().then(() => {
         else if(key==="w"&&!input.shift){event.preventDefault();host.send("menu:close-tab");}
       });
       // Use Chromium's certificate validation; failed TLS stays visible in the browser.
-      // 指纹同步注入：尽早 attach 调试器，待 Page 域启用后立刻注册「文档开头脚本」，
-      // 在 whoer/browserscan 等检测脚本之前、主世界、同步执行 fp-core，且使用已对齐出口 IP 地理的
-      // 指纹（fpCache），确保首屏读到的第一值就是与 IP 一致的伪装值，彻底消除「时区/语言与 IP 不一致」。
-      try {
-        const _dbg = wc.debugger;
-        if (_dbg && !_dbg.isAttached()) {
-          try {
-            _dbg.attach("1.3");
-          } catch (_) {}
-          _dbg.on("message", () => {});
-        }
-        // ⚠️ 关键修复（2026-09-11）：旧实现在此一次性取 envId/fp，但 web-contents-created 触发时
-        // 早期注入关键：直接从「分区会话对象」读指纹（wc.session.__tfbFp），不依赖 partition 字符串同步。
-        // envSes 与 webview 是同一份缓存 session，profiles:browse 时已把 fp0 挂上去，
-        // 故 web-contents-created 此刻 wc.session.__tfbFp 已就绪 -> 开篇即注入，whoer 抢不到真实时区。
-        // 仅当会话未挂指纹时（极少见，如分区未预创建）才退化：等 partition 同步后用 envIdFromPartition 查 fpCache。
-        if (_dbg && !wc.__tfbFpInjected && !wc.isDestroyed()) {
-          let _tries = 0;
-          const _tryInject = () => {
-            if (wc.isDestroyed() || wc.__tfbFpInjected) return;
-            const envId =
-              (wc.session && wc.session.__tfbEnvId) || envIdFromPartition(wc);
-            const fp =
-              (wc.session && wc.session.__tfbFp) ||
-              (envId ? fpCache.get(envId) : null);
-            if (!fp) {
-              if (_tries++ < 150)
-                setTimeout(_tryInject, 20); // partition/会话未就绪，快速重试（约 3 秒上限）
-              else
-                dbg(
-                  "GUEST-FP-INJECT(idle) 放弃：fp 始终未就绪 (envId=" +
-                    envId +
-                    ")",
-                );
-              return;
-            }
-            const _injectCode =
-              FP_CORE_SRC +
-              "\n;try{ if(window.installFingerprint) window.installFingerprint(" +
-              JSON.stringify(fp) +
-              "); }catch(e){}";
-            _dbg
-              .sendCommand("Page.enable")
-              .catch(() => {})
-              .then(() => applyProtocol((method,params)=>_dbg.sendCommand(method,params),fp))
-              .then(() =>
-                _dbg.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
-                  source: _injectCode,
-                }),
-              )
-              .then(() => {
-                wc.__tfbFpInjected = true;
-                // 尽早绑定 Accept-Language 头，赶在首次导航之前（否则第一个文档请求仍是本机 zh-CN，whoer 会跳 /zh/）
-                try {
-                  bindLangHeader(wc, fp.language);
-                } catch (_) {}
-                dbg(
-                  "GUEST-FP-INJECT(idle) id=" +
-                    envId +
-                    " ok tz=" +
-                    fp.timezone +
-                    " lang=" +
-                    fp.language,
-                );
-              })
-              .catch((err) => {
-                if (_tries++ < 150 && !wc.isDestroyed())
-                  setTimeout(_tryInject, 20);
-                else
-                  dbg(
-                    "GUEST-FP-INJECT FAIL id=" +
-                      envId +
-                      " " +
-                      ((err && err.message) || ""),
-                  );
-              });
-          };
-          _tryInject();
-        }
-        wc.once("destroyed", () => {
-          try {
-            if (_dbg && _dbg.isAttached()) _dbg.detach();
-          } catch (_) {}
-        });
-      } catch (_) {}
-      try {
-        dbg(
-          "GUEST created url=" +
-            (wc && !wc.isDestroyed()
-              ? wc.getURL
-                ? wc.getURL()
-                : ""
-              : "(destroyed)"),
-        );
-      } catch (_) {}
-      if (!wc || wc.isDestroyed()) return;
+      wc.once("dom-ready",()=>{
+        const fingerprint=wc.session.__tfbFp;
+        if(fingerprint)prepareGuestFingerprint(wc,fingerprint).catch(error=>dbg("GUEST-FP-READY FAIL id="+wc.id+" "+error.message));
+      });
       wc.on("did-finish-load", () => {
         try {
           dbg("GUEST-FINISH " + (wc.getURL ? wc.getURL() : ""));

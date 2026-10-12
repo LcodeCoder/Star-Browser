@@ -32,6 +32,10 @@ let app,origin;
   }
   assert.equal(early?.platform,'MacIntel');assert.equal(early?.language,'ja-JP');assert.equal(early?.tz,'Asia/Tokyo');
   results.push({name:'asar 内浏览器资源、动态 preload 与首屏指纹',status:'passed',detail:early});
+  const nativeDate=await app.evaluate(async({webContents},id)=>{const guest=webContents.getAllWebContents().find(w=>w.getType()==='webview'&&w.session.__tfbEnvId===id&&w.getURL().includes('/probe'));return guest.executeJavaScript("(()=>{const d=new Date('2026-01-15T12:00:00Z');return {month:d.getMonth(),hour:d.getHours(),offset:d.getTimezoneOffset(),utc:new Intl.DateTimeFormat('en-GB',{timeZone:'UTC'}).resolvedOptions().timeZone,invalid:Number.isNaN(new Date('invalid').getMonth())};})()");},profile.id);
+  assert.deepEqual(nativeDate,{month:0,hour:21,offset:-540,utc:'UTC',invalid:true});
+  const audit=await manager.evaluate(id=>window.api.fingerprintAudit(id),profile.id);assert.equal(audit.differences,0);assert.equal(audit.workerError,'');assert.equal(audit.rows.find(row=>row.context==='Worker'&&row.label==='时区').actual,'Asia/Tokyo');
+  results.push({name:'打包应用原生日期语义与实际网页/Worker/CSS检查',status:'passed',detail:{nativeDate,rows:audit.rows.length,unknown:audit.unknown}});
   await app.evaluate(async({session},id)=>{await session.fromPartition('persist:tfb-env-'+id).cookies.set({url:'http://qa.local',name:'packageQA',value:'yes',expirationDate:Date.now()/1000+3600});},profile.id);
   assert.equal((await manager.evaluate(id=>window.api.cookieCount(id),profile.id)).count,1);
   assert.equal((await manager.evaluate(()=>window.api.localApiStatus())).listening,false);
@@ -63,7 +67,7 @@ let app,origin;
   for(let i=0;i<150;i++){taskResult=(await manager.evaluate(()=>window.api.snapshot())).taskRuns.find(run=>run.id===taskRun.id);if(['completed','failed'].includes(taskResult?.state))break;await new Promise(resolve=>setTimeout(resolve,50));}
   assert.equal(taskResult?.state,'completed',taskResult?.error);assert.equal(taskResult.outputs.length,1);assert.deepEqual([...fs.readFileSync(taskResult.outputs[0].path).subarray(0,8)],[137,80,78,71,13,10,26,10]);
   results.push({name:'打包应用中的实际任务执行与截图',status:'passed'});
-  console.log('Packaged macOS app: 7 checks passed.');
+  console.log('Packaged macOS app: 8 checks passed.');
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
   if(app)await app.close().catch(()=>{});

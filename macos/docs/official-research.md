@@ -55,3 +55,15 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 ## 本地任务与配置一致性研究
 
 2026-10-13 05:03（东八区）通过在线搜索读取 AdsPower RPA https://help.adspower.com/docs/rpa 与 Octo Browser 设置 https://docs.octobrowser.net/en/profiles/browser-profile-settings/ 。RPA 文档包含流程编排、搜索、立即执行与任务日志；Star 当前实现本地步骤、环境选择、串行队列、取消、错误与截图，不包含云模板分享、团队权限和定时任务。Octo 文档分别提供 Canvas、Audio、Client Rects 等开关，并提示页面几何修改可能影响网站；下一轮逐项验证真实值与稳定性，优先避免干扰页面功能。
+
+
+## 0.7.0 原生语义与后台上下文
+
+2026-10-13 05:38（东八区）：通过在线检索读取 Chrome DevTools Protocol 的 Emulation/Target/Runtime、Electron Debugger，以及 Octo Browser 的环境设置文档。参考链接：
+
+- https://chromedevtools.github.io/devtools-protocol/tot/Emulation/
+- https://chromedevtools.github.io/devtools-protocol/tot/Target/
+- https://www.electronjs.org/docs/latest/api/debugger
+- https://docs.octobrowser.net/en/profiles/browser-profile-settings/
+
+采用 CDP 原生时区和屏幕/像素比配置，保留日期/Intl 明确参数的原生行为；通过 flatten sessionId 在 Dedicated Worker 脚本执行前配置。Worker 配置有有限超时且 finally 恢复执行。当前 Electron Shared/Service Worker 无法通过此 guest 路径完整配置；Chrome Service Worker 暂停后 Runtime 求值超时，因此保留原生实现并记录真实差异，未把它算作一致能力。Octo 的分项开关用于配置工作流参考，Star 的稳定覆盖范围仍由实际测试界定。

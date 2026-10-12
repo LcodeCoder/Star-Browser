@@ -18,3 +18,5 @@ npm run test:package
 源码来自用户提供的 Windows 安装包，使用项目内 baoyu-electron-extract 技能提取。`npm run verify:source` 需要本机保留的原始 asar 与 installer-verification.json，用于逐文件追溯；公开仓库不包含原安装包和提取证据。
 
 功能与已知边界见 docs/capabilities.md；实际测试记录见 docs/verification.md。安装包当前采用 ad hoc 签名。
+
+0.7.0 增加原生日期与屏幕一致性、Dedicated Worker 首脚本配置、稳定/原生策略，以及可复制的真实网页检查；详细边界见能力与验证文档。

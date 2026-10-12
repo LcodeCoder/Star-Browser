@@ -49,7 +49,7 @@ for(const system of ['win','mac','android'])test(`${system} 指纹可重复生�
   assert.notEqual(generateFingerprint('qa-other',opts).canvasNoise,fp.canvasNoise);
   assert.equal(fp.timezone,'Asia/Tokyo');assert.equal(fp.language,'ja-JP');
   assert.equal(fp.platform,{win:'Win32',mac:'MacIntel',android:'Linux armv8l'}[system]);
-  assert.ok(fp.fonts.length>0);assert.ok(fp.screen.width>0);
+  assert.ok(fp.nativeSignals.includes('fonts'));assert.ok(fp.screen.width>0);if(system==='mac')assert.match(fp.webgl.renderer,/Metal/);
 });
 
 test('HTTP / SOCKS5 代理文本解析和鉴权规则',()=>{
@@ -202,4 +202,11 @@ test('执行记录达到保留上限时，活动任务仍能更新且重启保�
   store.transaction(()=>{for(let index=0;index<250;index++)store.saveTaskRun({id:'finished-'+index,state:'completed',createdAt:index+2});});
   assert.equal(store.taskRuns().length,200);assert.ok(store.taskRuns().some(run=>run.id==='active'));store.saveTaskRun({id:'active',state:'running',createdAt:1,step:2});assert.equal(new Store(dir).taskRuns().find(run=>run.id==='active').step,2);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('指纹策略、屏幕校验与导入保持明确设置，原生信号不填入虚构数据',()=>{
+ const {validateProfile,importProfiles}=require('../src/main/profile-validation');
+ const input={name:'配置',os:'mac',fingerprint:{screen:{width:1600,height:900},devicePixelRatio:1.5,noise:{canvas:false,audio:true,webgl:false,clientRects:false}}};
+ const saved=validateProfile(input,true);assert.deepEqual(importProfiles([input])[0].fingerprint,saved.fingerprint);assert.throws(()=>validateProfile({fingerprint:{screen:{width:1600}}}),/屏幕/);assert.throws(()=>validateProfile({fingerprint:{noise:{canvas:'false'}}}),/策略/);
+ const fp=generateFingerprint('settings-consistency',saved);assert.equal(fp.noise.canvas,false);assert.equal(fp.noise.audio,true);assert.equal(fp.screen.width,1600);for(const key of ['audioSampleRate','fonts','mediaDevices','speechVoices','plugins'])assert.equal(fp[key],undefined);
 });

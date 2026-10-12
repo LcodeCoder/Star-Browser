@@ -111,6 +111,7 @@ async function launchProfile(profile, paths, fingerprint) {
     profile.proxy,
   );
 
+  const pageSource=fs.readFileSync(path.join(paths.extTemplateDir,'fp-core.js'),'utf8')+';installFingerprint('+JSON.stringify(fp)+');';
   const args = [
     `--user-data-dir=${userDataDir}`,
     "--remote-debugging-pipe",
@@ -167,12 +168,13 @@ async function launchProfile(profile, paths, fingerprint) {
     pipe.on('message',message=>{
       if(message.method==='Target.attachedToTarget'&&message.params.targetInfo.type==='page'){
         const {sessionId,targetInfo}=message.params;
-        const ready=applyProtocol((method,params)=>pipe.send(method,params,sessionId),fp).then(()=>pipe.send('Runtime.runIfWaitingForDebugger',{},sessionId));
+        const ready=applyProtocol((method,params)=>pipe.send(method,params,sessionId),fp).then(()=>pipe.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:require('./fingerprint-targets').FILTER},sessionId)).finally(()=>pipe.send('Runtime.runIfWaitingForDebugger',{},sessionId).catch(()=>{}));
         ready.catch(()=>{});pageSessions.set(targetInfo.targetId,{sessionId,ready});
       }
+      if(message.method==='Target.attachedToTarget'&&message.params.targetInfo.type!=='page'){const {sessionId,targetInfo}=message.params;require('./fingerprint-targets').configureTarget((method,params)=>pipe.send(method,params,sessionId),fp,targetInfo.type,pageSource).catch(error=>{running.targetErrors||=[];running.targetErrors.push({type:targetInfo.type,error:error.message});});}
       if(message.method==='Target.detachedFromTarget')for(const [id,item] of pageSessions)if(item.sessionId===message.params.sessionId)pageSessions.delete(id);
     });
-    await pipe.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:[{type:'page'},{exclude:true}]});
+    await pipe.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:[{type:'page'},{type:'worker'},{type:'shared_worker'},{type:'iframe'},{exclude:true}]});
     const runtimeVersion=await pipe.send("Browser.getVersion");
     if(!runtimeVersion.product.endsWith("/"+version))throw new Error("本机 Chrome 版本在启动时发生变化，请重试");
     // Chrome 137 起不再接受正式版的 --load-extension；使用官方本地管道 API。

@@ -60,7 +60,7 @@ function go(u) {
   const t = activeTab();
   if (!t) return;
   try {
-    t.web.src = u || "about:blank";
+    if(t.web.__starReady){t.web.src=u||"about:blank";}else{t.web.__starPendingURL=u||"about:blank";setupGuestInjection(t.web,t.id);}
     t.url = u || "";
     armNav(u);
     updateNavButtons();
@@ -1546,56 +1546,30 @@ $("s-cookie-in").addEventListener("click", async () => {
 // webview 尚未 dom-ready 而抛 "The WebView must be attached to the DOM and the dom-ready event
 // emitted before this method can be called" —— 包进 try/catch 并在 dom-ready 后重试，彻底消除该报错。
 // （早期「文档开头」注入由主进程 web-contents-created 路径完成，这里只是 late 兜底，晚一点也安全。）
-function setupGuestInjection(w, tabId) {
-  let id = null;
-  try {
-    id = (w.getWebContentsId && w.getWebContentsId()) || null;
-  } catch (e) {
-    id = null;
-  }
-  if (!id) {
-    try {
-      w.addEventListener("dom-ready", () => setupGuestInjection(w, tabId), {
-        once: true,
-      });
-    } catch (e) {}
-    return;
-  }
-  if (w.__tfbGuestSet) return;
-  w.__tfbGuestSet = true;
-  // 注入指纹：用 CDP 在「文档最开头、页面脚本之前、主世界、同步」执行 fp-core，
-  // 保证 whoer/browserscan 等检测脚本读到的第一值就是伪装值（语言/时区/UA 等），不再被抢读真实宿主机。
-  if (
-    profile &&
-    profile.fingerprint &&
-    window.api &&
-    window.api.injectFingerprint
-  ) {
-    try {
-      window.api.injectFingerprint(id, profile.fingerprint).catch(() => {});
-    } catch (e) {}
-  }
-  // 始终挂代理 + 语言头（即便未配代理也要把 Accept-Language 重写为伪装语言，否则 whoer 服务端比对出语言不一致）
-  if (profile && window.api && window.api.setGuestProxy) {
-    try {
-      window.api
-        .setGuestProxy(
-          id,
-          profile.proxy || {},
-          profile.fingerprint && profile.fingerprint.language,
-        )
-        .catch(() => {});
-    } catch (e) {}
-  }
-  // 注册主进程 setWindowOpenHandler：拦截弹窗，把 URL 发回渲染端开新标签（比 DOM new-window preventDefault 可靠）
-  if (window.api && window.api.setGuestPopHandler) {
-    try {
-      window.api.setGuestPopHandler(id);
-    } catch (e) {}
-  }
+async function setupGuestInjection(w, tabId) {
+  if(w.__starSetupPending||w.__tfbGuestSet)return;
+  let id;
+  try{id=w.getWebContentsId();}catch{}
+  if(!id)return; // The initial local document's dom-ready event retries this.
+  w.__starSetupPending=true;
+  try{
+    const config=w.__starProfile;
+    if(config?.fingerprint)await window.api.injectFingerprint(id,config.fingerprint);
+    if(config)await window.api.setGuestProxy(id,config.proxy||{},config.fingerprint?.language);
+    await window.api.setGuestPopHandler(id);
+    if(!w.isConnected)return;
+    w.__tfbGuestSet=true;w.__starReady=true;
+    if(w.__starPendingURL){const url=w.__starPendingURL;delete w.__starPendingURL;w.src=url;}
+  }catch(error){
+    if(w.isConnected&&activeId===tabId)showFatal("环境准备失败："+(error.message||error)+"。请重新打开此环境。");
+    dbg("guest setup failed tab="+tabId+" "+(error.message||error));
+  }finally{w.__starSetupPending=false;}
 }
 function makeWebview(tabId) {
   const w = document.createElement("webview");
+  w.__starProfile=profile;w.__starReady=!profile?.fingerprint;
+  w.src="about:blank";
+  w.addEventListener("dom-ready",()=>setupGuestInjection(w,tabId));
   StarBrowser.guest(w,tabId);
   // 允许 guest 页发起新窗口（target=_blank / window.open），否则链接会被静默拦截、既不弹窗也不触发 new-window。
   // 真正「新标签页而非新窗口」的效果由下方 new-window 处理器 e.preventDefault() + createTab 实现。

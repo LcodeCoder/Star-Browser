@@ -5,7 +5,7 @@
 | 分类 | 官方参考 | 本项目基线 | 待完善 |
 | --- | --- | --- | --- |
 | 环境隔离、稳定配置 | AdsPower、GoLogin | 独立 session/Chrome 数据目录、首脚本 JS/CDP、配置导入导出、带密码的加密数据备份与独立恢复 | 跨平台迁移、完整系统密钥数据 |
-| 指纹参数 | Multilogin、BitBrowser | JS 参数与 CDP UA/Client Hints/语言/时区，实际内核版本，硬件校验 | Worker/WebGPU 等逐项验证、内核边界 |
+| 指纹参数 | Multilogin、BitBrowser | JS 参数、CDP UA/Client Hints/语言/原生时区/屏幕与像素比、Dedicated Worker 首脚本、网页检查报告与覆盖开关 | Shared/Service Worker、WebGPU 等原生边界 |
 | 高频工作台 | GoLogin、Dolphin Anty | 搜索/分组/标签/详情、原子批量、置顶、归档、完整命令定位与一万环境分页 | 持续测量启动、后台资源与筛选性能 |
 | 代理管理 | AdsPower、Octo Browser | HTTP/HTTPS/SOCKS5、鉴权网关、代理库/检测/分配/批量录入、故障阻断 | 真实供应商与 IPv6 网络测试 |
 | Cookie/书签/历史 | AdsPower、Octo | Cookie 备份导入清空、书签、每环境历史、标签恢复、真实下载控制与权限提示、Cookie/网页存储备份恢复 | 跨设备 Chrome 登录及系统密钥边界 |
@@ -14,7 +14,7 @@
 | 扩展 | Octo、GoLogin | 用户扩展库、权限预览、每环境选择、自有副本与隔离存储 | Electron 仅支持扩展子集，任意扩展需单独验证 |
 | 团队/云同步/权限 | AdsPower、GoLogin、Multilogin | 未提供远程服务 | 需要身份、服务端和加密同步；不得展示虚构团队 |
 | 云浏览器/云手机/代理购买 | GoLogin、BitBrowser、Multilogin | 无此基础设施 | 需要外部服务，无法用本地 UI 替代 |
-| TLS/DNS/字体/Worker/WebGPU 等内核信号 | 各厂商文档 | Electron/Chrome 原生内核，部分 JS 表面覆盖 | 需逐项测试；内核修改是独立研发范围 |
+| TLS/DNS/字体/Worker/WebGPU 等内核信号 | 各厂商文档 | Electron/Chrome 原生内核；Dedicated Worker 已验证，Shared/Service 保留边界，字体/插件/设备/语音使用真实对象 | WebGPU/TLS/DNS 保留内核信号；内核修改是独立研发范围 |
 
 ## 本轮实现
 
@@ -50,3 +50,8 @@
 
 
 本地任务（0.6.0）：保存 1–50 步，打开 HTTP/HTTPS 网页、等待 CSS 元素、真实点击、填写文本、按键、滚动、等待与截图。选择 1–50 环境串行执行，总活动队列最多 100；环境修改与同步冲突受保护。取消、超时、窗口关闭、标签切换与重启中断均提供真实结果。文本仅在本机任务定义中保存，执行记录与活动日志不记录填入文本。截图文件权限 0600，结果记录保留最近 200 条并保护活动任务。当前不包含条件/循环、跨 iframe 定位、上传/系统对话框、云模板、调度、原生 Chrome 任务或团队权限。
+
+
+指纹与网页兼容（0.7.0）：首次远程导航等待环境原生配置完成；并行不同环境、跨站导航首脚本时区已测。日期/Intl/Temporal 使用原生实现，明确传入的 UTC 与语言不会被覆盖；屏幕和像素比与 CSS 媒体查询同步。Dedicated Worker 的 UA、Client Hints、语言、核心和内存在首次脚本前配置。Canvas、音频、WebGL 可切换稳定覆盖/原生值，页面几何默认原生；重复安装不叠加，AudioBuffer 重复读取不累计噪声。实际网页检查按网页/CSS/Worker 分组，列出差异/未读取/原生项，并可复制报告，不提供检测分数。
+
+本机此次观测：Electron Shared/Service Worker 的 UA、语言、核心和内存保持原生，与页面配置可能不同；其时区继承环境设置。Chrome Shared Worker 本次所测字段一致，Service Worker 核心/内存保持真实硬件。未暂停或包装 Service Worker，避免拖慢网站注册；这些观测不代表所有后台上下文已覆盖。字体、插件、媒体设备、语音、音频采样率、WebGPU、TLS/DNS 均不能称为伪装后的内核信号。

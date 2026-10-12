@@ -23,7 +23,7 @@ const StarBrowser = (() => {
   function snapshot() {
     return tabs.map(t=>({url:t.ntp?'about:home':safeUrl(t),title:t.title||'新标签'}));
   }
-  function safeUrl(t) {try{return t.web.getURL()||t.url||'about:home';}catch{return t.url||'about:home';}}
+  function safeUrl(t) {if(t.web.__starPendingURL)return t.web.__starPendingURL;try{return t.web.getURL()||t.url||'about:home';}catch{return t.url||'about:home';}}
   function persist(immediate=false) {
     if(!profile || restoring) return;
     clearTimeout(saveTimer);

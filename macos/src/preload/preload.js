@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld("api", {
   exportProfiles: ids => ipcRenderer.invoke("star:export", ids),
   importPreview: () => ipcRenderer.invoke("star:importPreview"),
   importApply: token => ipcRenderer.invoke("star:importApply", token),
+  fingerprintAudit: id => ipcRenderer.invoke('star:fingerprintAudit',id),
   taskSave: input => ipcRenderer.invoke("star:taskSave",input),
   taskRemove: id => ipcRenderer.invoke("star:taskRemove",id),
   taskStart: (id,profiles) => ipcRenderer.invoke("star:taskStart",id,profiles),

@@ -98,3 +98,18 @@
 - 0.6.0 arm64 .app/.dmg/.zip 构建成功，完整签名、asar/首脚本、Cookie/API、加密恢复、同步生命周期以及包内真实任务导航/元素等待/截图通过。签名仍为 ad hoc，未公证。
 
 证据：test-results/star-0.6.0/。
+
+
+## 指纹原生语义与网页检查 0.7.0
+
+2026-10-13 05:38（东八区）：23 项单元、11 项真实指纹专项、24 项 Electron/Chrome 回归、4 项一万环境、3 项网站权限、6 项用户扩展、6 项 HTTP API、8 项备份、8 项窗口同步、9 项本地任务和 8 项真实打包检查通过。21 个原始文件完整，29 项 JS 语法检查通过。
+
+- 修复首次导航与原生配置竞态：使用初始本地文档，配置完成才打开远程网页。首脚本读取欧洲/东京、同时打开两个不同环境及跨 localhost/qa.local 站点后分别保持时区。重复配置共用 Promise，失败不继续导航。
+- 去掉破坏 Date 月份/Invalid Date、明确 UTC 和显式语言参数的旧 JavaScript 实现。实测基线 5000 次日期三字段读取约 437.8ms，结果含 NaN；修正后本次约 0.6ms，结果正确。仅是本机该函数测量，不表示整体浏览速度或跨机器性能。
+- 音频重复读取不叠加，通道重新写入仍只应用一次；重装核心不累积 Canvas/音频覆盖。TextMetrics、插件数组与默认 DOMRectList 保持原生类型。页面几何可选覆盖仍保留 DOMRectList/item/迭代语义。
+- 屏幕 1600×900/DPR 1.5 的网页值与 CSS media 查询一致。Dedicated Worker 首次脚本与页面的 UA/语言/核心/时区一致，实际报告另检查设备内存与语言列表。稳定/原生开关经 UI 编辑、持久和独立复制验证。
+- 工作台真实操作检查、重试、浅深主题、分组展开与报告复制；切换环境的异步结果不会写入另一环境详情。当前网页与 Worker/CSS 合计 19 项，本地安全上下文检查无差异。qa.local 非安全上下文不提供 deviceMemory 的情况标未读取。
+- Electron Shared/Service Worker 的 UA/语言/CPU/内存保持原生，时区一致；Chrome Shared Worker 本次一致，Service Worker CPU/内存保持原生。服务注册与消息实际成功，移除暂停式 Service Worker 覆盖后无后台协议超时。WebGPU 仅读取真实适配器，不伪造或推断不可识别。
+- 0.7.0 arm64 .app/.dmg/.zip 构建完成；包内原生日期、19 项网页/Worker/CSS 报告、实际任务/同步/加密备份/API 等八项检查通过。完整 ad hoc 签名校验通过，尚未 Developer ID 公证。
+
+证据：test-results/star-0.7.0/；指纹修改前单次测量保存 fingerprint-before.json。

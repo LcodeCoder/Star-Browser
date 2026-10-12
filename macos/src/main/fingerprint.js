@@ -90,6 +90,11 @@ const GPU_VENDORS = [
   },
 ];
 
+const MAC_GPU=[
+ {vendor:'Google Inc. (Apple)',renderer:'ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)'},
+ {vendor:'Google Inc. (Apple)',renderer:'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)'},
+ {vendor:'Google Inc. (Apple)',renderer:'ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)'}
+];
 const RESOLUTIONS = [
   [1920, 1080],
   [1920, 1200],
@@ -482,7 +487,7 @@ function generateFingerprint(seed, opts = {}) {
     devicePixelRatio = pick(rng, [1, 1, 1, 1, 1.25, 1.5]);
     cores = pick(rng, [4, 8, 8, 12, 16]);
     memory = pick(rng, [4, 8, 8, 8]);
-    gpu = pick(rng, GPU_VENDORS);
+    gpu = pick(rng, os==='mac'?MAC_GPU:GPU_VENDORS);
   }
 
   const result = {
@@ -534,6 +539,10 @@ function generateFingerprint(seed, opts = {}) {
     plugins: [],
   };
   Object.assign(result, opts.fingerprint || {});
+  result.noise = Object.assign({canvas:true,audio:true,webgl:true,clientRects:false},opts.fingerprint?.noise||{});
+  result.protocolManaged = true;
+  for(const key of ['audioSampleRate','fonts','mediaDevices','speechVoices','plugins'])delete result[key];
+  result.nativeSignals=['fonts','mediaDevices','speechVoices','plugins','audioSampleRate','webgpu','sharedWorker','serviceWorker','tls','dns'];
   return result;
 }
 
