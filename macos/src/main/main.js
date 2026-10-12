@@ -254,7 +254,9 @@ function writeWebviewPreload(profile, fingerprint) {
   const content = [
     "'use strict';",
     "const CFG = " + JSON.stringify(fingerprint) + ";",
-    "const { webFrame } = require('electron');",
+    "const { webFrame, ipcRenderer } = require('electron');",
+    "document.addEventListener('paste',event=>{if(event.isTrusted)ipcRenderer.send('star:syncPaste',String(event.clipboardData?.getData('text/plain')||'').slice(0,1000000));},true);",
+    "document.addEventListener('wheel',event=>{if(event.isTrusted&&!event.ctrlKey)ipcRenderer.send('star:syncWheel',{x:event.clientX,y:event.clientY,deltaX:event.deltaX,deltaY:event.deltaY,deltaMode:event.deltaMode});},{passive:true,capture:true});",
     "// 用 webFrame.executeJavaScript 在主世界执行，避免在 document_start 用 appendChild(<script>) 破坏页面加载（百度等会变空白）",
     "webFrame.executeJavaScript(" + JSON.stringify(code) + ");",
   ].join("\n");

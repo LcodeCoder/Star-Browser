@@ -53,13 +53,15 @@ const StarBrowser = (() => {
     try{await window.api.historyRecord(profile.id,url,t.title);}catch{}
   }
   function guest(w,tabId) {
+    w.addEventListener("dom-ready",()=>{if(activeId===tabId)syncActive();});
     w.addEventListener('found-in-page',event=>{if(activeId===tabId)$('findResult').textContent=event.result.matches?`${event.result.activeMatchOrdinal} / ${event.result.matches}`:'没有匹配';});
   }
   function find(forward=true,next=false) {const t=activeTab(),q=$('findInput').value;if(!t||t.ntp||!q){$('findResult').textContent='';return;}try{t.web.findInPage(q,next?{forward,findNext:true}:{forward});}catch{}}
   function closeFind() { const wasOpen=!$('findBar').hidden;$('findBar').hidden=true;try{activeTab()?.web.stopFindInPage('clearSelection');if(wasOpen)activeTab()?.web.focus();}catch{} }
   function openFind() {$('findBar').hidden=false;$('findInput').focus();$('findInput').select();}
   function zoom(direction) {const t=activeTab();if(!t)return;try{const current=t.web.getZoomFactor();const factor=direction===0?1:Math.max(.25,Math.min(3,Math.round((current+direction*.1)*100)/100));t.web.setZoomFactor(factor);$('zoomValue').textContent=`${Math.round(factor*100)}%`;}catch{}}
-  function tabChanged() {closeFind();persist();try{$('zoomValue').textContent=`${Math.round(activeTab().web.getZoomFactor()*100)}%`;}catch{}}
+  function syncActive() {try{const t=activeTab();if(profile&&t){const bounds=t.web.getBoundingClientRect();window.api.syncActive(profile.id,t.web.getWebContentsId(),{width:bounds.width,height:bounds.height}).catch(()=>{});}}catch{}}
+  function tabChanged() {syncActive();closeFind();persist();try{$('zoomValue').textContent=`${Math.round(activeTab().web.getZoomFactor()*100)}%`;}catch{}}
   function togglePanel(id) {const el=$(id),opening=el.hidden;for(const other of ['historyPanel','tabSearchPanel','browserMenu'])$(other).hidden=true;el.hidden=!opening;if(opening&&id==='historyPanel')loadHistory();if(opening&&id==='tabSearchPanel'){renderTabSearch();$('tabSearchInput').focus();}}
   async function loadHistory() {try{historyRows=await window.api.historyList(profile.id);renderHistory();}catch(error){$('historyList').textContent=error.message;}}
   function renderHistory() {
@@ -95,6 +97,10 @@ const StarBrowser = (() => {
     document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(mod&&['f','l','y','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu'])$(id).hidden=true;}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
     document.addEventListener('pointerdown',e=>{for(const [id,trigger] of [['browserMenu','browserMenuBtn'],['tabSearchPanel','tabSearchBtn'],['historyPanel','historyBtn']])if(!$(id).hidden&&!$(id).contains(e.target)&&!$(trigger).contains(e.target))$(id).hidden=true;});
     window.addEventListener('beforeunload',()=>{if(profile)window.api.saveSessionNow(profile.id,snapshot(),tabs.findIndex(t=>t.id===activeId));});
+    const syncBanner=document.createElement('div');syncBanner.className='browser-sync-banner';syncBanner.hidden=true;syncBanner.setAttribute('role','status');document.getElementById('toolbar').insertAdjacentElement('afterend',syncBanner);
+    const syncState=status=>{const included=profile&&[status.master,...status.followers].includes(profile.id);syncBanner.hidden=!status.active||!included;if(!included)return;syncBanner.replaceChildren();const label=document.createElement('span');label.textContent=status.paused?'窗口同步已暂停':status.master===profile.id?'主控窗口 · 操作将同步到 '+status.followers.length+' 个环境':'跟随窗口 · 接收主控页面操作';syncBanner.append(label);const pause=document.createElement('button');pause.textContent=status.paused?'继续':'暂停';pause.onclick=()=>window.api.syncPause(!status.paused);const stop=document.createElement('button');stop.textContent='停止同步';stop.onclick=()=>window.api.syncStop();syncBanner.append(pause,stop);syncActive();};
+    window.api.onSyncState(syncState);window.api.syncStatus().then(syncState);window.api.onSyncNavigate(url=>{if(/^https?:\/\//i.test(url))go(url);});
+    new ResizeObserver(()=>syncActive()).observe(document.getElementById('wrap'));
     window.api.onBrowserCommand(command);window.api.onPreferences(next=>{preferences=next;theme();});
   }
   return {init,persist,beginRestore,endRestore,tabClosed,restoreClosed,navigate,settled,guest,tabChanged,command,setup,icon};

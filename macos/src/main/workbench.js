@@ -46,10 +46,20 @@ function registerWorkbench(store,{commands,starting}={}) {
     for(const [id,chrome] of getLaunchedBrowsers())if(!chrome.pipe.closed&&!active.has(id))active.set(id,{id,running:true,engine:'本机 Chrome',windows:0});
     return [...active.values()].sort((a,b)=>a.id.localeCompare(b.id));
   };
+  const synchronizer=new (require('./synchronizer').Synchronizer)(store);
+  synchronizer.on('changed',status=>{for(const w of BrowserWindow.getAllWindows())if(!w.isDestroyed()){w.webContents.send('star:syncState',status);if(!w._profile)w.webContents.send('star:invalidate');}});
+  ipcMain.on('star:syncWheel',(e,input)=>synchronizer.wheel(e.sender,input));
+  ipcMain.on('star:syncPaste',(e,text)=>synchronizer.paste(e.sender,text));
+  ipcMain.handle('star:syncActive',(e,id,guestId,size)=>synchronizer.setActive(e,id,guestId,size));
+  ipcMain.handle('star:syncStatus',()=>synchronizer.status());
+  ipcMain.handle('star:syncStart',(e,config)=>{managerOnly(e);return synchronizer.start(config);});
+  ipcMain.handle('star:syncPause',(e,value)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile&&!([synchronizer.status().master,...synchronizer.status().followers].includes(w._profile.id)))throw new Error('此环境未参与同步');return synchronizer.pause(value);});
+  ipcMain.handle('star:syncStop',()=>synchronizer.stop());
+  ipcMain.handle('star:syncTile',e=>{managerOnly(e);return synchronizer.tile();});
   ipcMain.handle('star:snapshot',(e,knownToken)=>{
-    const running=runtime(),token=store.revision()+':'+JSON.stringify(running);
+    const running=runtime(),token=store.revision()+':'+JSON.stringify(running)+(synchronizer.session?':'+JSON.stringify(synchronizer.status()):'');
     if(knownToken===token)return {unchanged:true,token};
-    return {token,profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
+    return {token,synchronizer:synchronizer.status(),profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
   });
   const profileAction=async(e,action,ids=[],patch={})=>{
     if(!Array.isArray(ids)||ids.length>500)throw new Error('每次最多操作 500 个环境');
@@ -108,7 +118,7 @@ function registerWorkbench(store,{commands,starting}={}) {
   ipcMain.handle('star:backupDiscard',async(e,token)=>{managerOnly(e);return backups.discard(token,e.sender.id);});
   ipcMain.handle('star:apiStatus',e=>{managerOnly(e);return localApi.status();});
   ipcMain.handle('star:apiConfigure',async(e,patch)=>{managerOnly(e);return localApi.configure(patch);});
-  ipcMain.handle('star:apiCopyToken',e=>{managerOnly(e);clipboard.writeText(localApi.token());return true;});
+  ipcMain.handle('star:apiCopyToken',async e=>{managerOnly(e);await clipboard.writeText(localApi.token());return true;});
   ipcMain.handle('star:apiRotateToken',e=>{managerOnly(e);return localApi.rotateToken();});
   ipcMain.handle('star:apiDocs',e=>{managerOnly(e);return fs.readFileSync(path.join(__dirname,'../resources/local-api.md'),'utf8');});
   if(localApi.config.enabled)localApi.start().catch(()=>{});
@@ -167,7 +177,7 @@ function registerWorkbench(store,{commands,starting}={}) {
     if(action!=='cancel')store.saveDownload({...record,state:item.isPaused()?'paused':'progressing',received:item.getReceivedBytes()});
     return true;
   });
-  ipcMain.handle('star:copy',(e,value)=>{clipboard.writeText(String(value).slice(0,100000));return true;});
+  ipcMain.handle('star:copy',async(e,value)=>{await clipboard.writeText(String(value).slice(0,100000));return true;});
   app.on('before-quit',()=>store.flush());
 
   function bindSession(ses){

@@ -47,3 +47,6 @@ AdsPower features 页面此次返回的内容不足以读取功能细节，不�
 2026-10-13 04:27（东八区）成功取得并阅读 Node crypto https://nodejs.org/api/crypto.html 、Electron Session https://www.electronjs.org/docs/latest/api/session 、Chrome Manifest key https://developer.chrome.com/docs/extensions/reference/manifest/key 、AdsPower Synchronizer https://help.adspower.com/docs/synchronizer 与 Octo 官方目录 https://docs.octobrowser.net/llms.txt 。抓取证据：test-results/backups-research.json。
 
 备份使用 scrypt、AES-GCM、随机 salt/nonce 与认证头，流式压缩，解密完整验证后才恢复；已测试错误密码、篡改、路径越界、重复与超限。Chrome key 用于稳定扩展身份，自有扩展副本缺 key 时生成独立 RSA 公钥，不上传开发者后台。AdsPower 的主窗口/受控窗口模型用于下一轮同步交互参考，功能状态仍以实际实现和测试为准。
+
+
+同步实现参考 AdsPower Synchronizer 的主控/受控模型，读取 Electron WebContents https://www.electronjs.org/docs/latest/api/web-contents 、CDP Input https://chromedevtools.github.io/devtools-protocol/tot/Input/ 和 Electron Clipboard https://www.electronjs.org/docs/latest/api/clipboard 。实际以 before-mouse-event/before-input-event、可信粘贴/滚轮 preload 与 CDP Input 转发，保护仅选定环境、当前网页范围。剪贴板按最新官方 Promise API 等待完成。证据在 test-results/sync-research.json。

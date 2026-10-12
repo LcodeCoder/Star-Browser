@@ -10,7 +10,7 @@
 | 代理管理 | AdsPower、Octo Browser | HTTP/HTTPS/SOCKS5、鉴权网关、代理库/检测/分配/批量录入、故障阻断 | 真实供应商与 IPv6 网络测试 |
 | Cookie/书签/历史 | AdsPower、Octo | Cookie 备份导入清空、书签、每环境历史、标签恢复、真实下载控制与权限提示、Cookie/网页存储备份恢复 | 跨设备 Chrome 登录及系统密钥边界 |
 | 自动化 | AdsPower、Kameleo | 独立 Chrome 的本地 CDP pipe、默认关闭且带密钥的本地 REST API | 可验证的任务闭环 |
-| 同步操作 | AdsPower、Dolphin Anty、BitBrowser | 未实现 | 明确的主从控制与退出流程 |
+| 同步操作 | AdsPower、Dolphin Anty、BitBrowser | 内置浏览器主控/跟随、可信点击/键盘/粘贴/滚动、地址跟随、暂停停止与窗口排列 | 系统输入法/对话框、文件选择和原生 Chrome 同步 |
 | 扩展 | Octo、GoLogin | 用户扩展库、权限预览、每环境选择、自有副本与隔离存储 | Electron 仅支持扩展子集，任意扩展需单独验证 |
 | 团队/云同步/权限 | AdsPower、GoLogin、Multilogin | 未提供远程服务 | 需要身份、服务端和加密同步；不得展示虚构团队 |
 | 云浏览器/云手机/代理购买 | GoLogin、BitBrowser、Multilogin | 无此基础设施 | 需要外部服务，无法用本地 UI 替代 |
@@ -24,7 +24,7 @@
 - 指纹一致性：使用实际 Chromium/Chrome 版本、CDP UA/Client Hints/时区/语言覆盖、硬件手动设置校验。JavaScript 覆盖仍有能力边界。
 - 存储：原子写入、备份恢复、损坏文件保留、历史去重与延迟保存。
 
-新增闭环以 verification.md 的对应测试记录为准。0.4.0 的加密环境备份、扩展管理、本地 API、网站权限和大规模性能已完成专项验证；同步操作继续迭代。
+新增闭环以 verification.md 的对应测试记录为准。0.4.0 的加密环境备份、扩展管理、本地 API、网站权限和大规模性能已完成专项验证；主从同步已完成专项验证，更多指纹信号与本地任务继续迭代。
 
 本轮可读官方研究见 [official-research.md](official-research.md)。
 

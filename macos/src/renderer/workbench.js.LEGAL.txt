@@ -93,7 +93,9 @@ lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/lock-keyhole.mjs:
 lucide-react/dist/esm/icons/monitor.mjs:
 lucide-react/dist/esm/icons/moon.mjs:
+lucide-react/dist/esm/icons/mouse-pointer-2.mjs:
 lucide-react/dist/esm/icons/network.mjs:
+lucide-react/dist/esm/icons/panels-top-left.mjs:
 lucide-react/dist/esm/icons/pause.mjs:
 lucide-react/dist/esm/icons/pencil.mjs:
 lucide-react/dist/esm/icons/pin.mjs:

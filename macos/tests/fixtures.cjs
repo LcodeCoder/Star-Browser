@@ -26,6 +26,10 @@ async function startOrigin() {
   const requests = [];
   const fixture = await listen(http.createServer((req, res) => {
     requests.push({url: req.url, headers: req.headers});
+    if(req.url.startsWith('/sync')){
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});
+      res.end('<!doctype html><html><head><title>窗口同步验证</title><style>body{margin:0;height:3000px;font:16px sans-serif}button,input,a{position:absolute;left:20px;height:40px;box-sizing:border-box}#click{top:80px;width:160px}#text{top:150px;width:300px}#link{top:230px}#scrollTarget{position:absolute;top:2200px}</style></head><body><button id="click">点击计数 0</button><input id="text" aria-label="文本输入"><a id="link" href="/sync-next">跳转页面</a><div id="scrollTarget">滚动位置</div><script>window.syncClicks=0;window.trustedClicks=[];document.querySelector("#click").onclick=e=>{window.syncClicks++;window.trustedClicks.push(e.isTrusted);e.target.textContent="点击计数 "+window.syncClicks;};</script></body></html>');return;
+    }
     if (req.url.startsWith('/download')) {
       const total=4*1024*1024,chunk=Buffer.alloc(64*1024,0x53);let sent=0;
       res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':'attachment; filename="star-qa.bin"','Content-Length':total,'Accept-Ranges':'bytes'});

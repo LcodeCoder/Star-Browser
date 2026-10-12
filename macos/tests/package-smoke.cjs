@@ -51,7 +51,14 @@ let app,origin;
   const restored=await manager.evaluate(token=>window.api.backupRestore(token),backupPreview.token);assert.equal(restored.count,1);assert.notEqual(restored.profiles[0].id,profile.id);
   assert.equal((await manager.evaluate(id=>window.api.cookieCount(id),restored.profiles[0].id)).count,1);
   results.push({name:'打包应用的实际加密环境备份与恢复',status:'passed'});
-  console.log('Packaged macOS app: 5 checks passed.');
+  await manager.evaluate(async ids=>{for(const id of ids)await window.api.browse(id);},[profile.id,restored.profiles[0].id]);
+  let syncReady=false;
+  for(let i=0;i<100&&!syncReady;i++){try{await manager.evaluate(config=>window.api.syncStart(config),{master:profile.id,followers:[restored.profiles[0].id],navigation:false});syncReady=true;}catch(error){if(!error.message.includes('等待页面就绪'))throw error;await new Promise(resolve=>setTimeout(resolve,50));}}
+  assert.equal(syncReady,true);assert.equal((await manager.evaluate(()=>window.api.syncStatus())).active,true);
+  await manager.evaluate(()=>window.api.syncPause(true));assert.equal((await manager.evaluate(()=>window.api.syncStatus())).paused,true);
+  await manager.evaluate(()=>window.api.syncPause(false));await manager.evaluate(()=>window.api.syncStop());assert.equal((await manager.evaluate(()=>window.api.syncStatus())).active,false);
+  results.push({name:'打包应用的实际主从窗口同步生命周期',status:'passed'});
+  console.log('Packaged macOS app: 6 checks passed.');
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
   if(app)await app.close().catch(()=>{});
