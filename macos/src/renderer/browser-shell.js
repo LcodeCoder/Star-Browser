@@ -989,6 +989,7 @@ function setStarError(error) {
     const input = $(id); input.removeAttribute("aria-invalid"); input.removeAttribute("aria-describedby");
     if (error?.field === field) { input.setAttribute("aria-invalid", "true"); input.setAttribute("aria-describedby", "starError"); input.focus(); }
   }
+  if (error && !error.field && !$("starPop").hidden) message.focus();
 }
 function setStarBusy(busy) {
   starBusy = busy; $("starFields").disabled = busy;
