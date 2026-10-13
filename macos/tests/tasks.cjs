@@ -108,7 +108,7 @@ async function launch(){app=await _electron.launch({args:['.'],cwd:process.cwd()
     assert.equal((await runState(runs[0].id)).persistenceError,pending.persistenceError);
     await manager.bringToFront();await manager.locator('#navTasks').click();await manager.getByRole('button',{name:'刷新工作台',exact:true}).click();
     await manager.locator('.task-persistence-warning').waitFor();await manager.getByRole('button',{name:/执行记录/}).click();
-    await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows().find(w=>!w._profile);win.setMinimumSize(480,600);win.setSize(500,850);});
+    await app.evaluate(({BrowserWindow})=>{const win=BrowserWindow.getAllWindows().find(w=>!w._profile);win.setMinimumSize(480,600);win.setContentSize(500,850);});
     await manager.waitForFunction(()=>innerWidth===500);
     for(const theme of ['light','dark']){
      await api('preferences',{theme});await until(()=>manager.evaluate(theme=>document.documentElement.dataset.theme===theme,theme));

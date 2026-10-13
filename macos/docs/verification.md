@@ -274,3 +274,5 @@ GitHub Actions 38365552148（c978bb3，最终运行代码）macOS 与 Windows �
 较早的 GitHub Actions 38472789943 在 Mac/Windows 编辑器测试中读取了尚未完成滚动的字段位置；测试现等待真实可见区域完成再判定。该作业内核策略下载遇到 HTTP 429，校验工具已增加有限重试、官方 Gitiles 回退、哈希验证缓存和失败报告。跨平台 CI 的通过状态以对应提交的作业为准，不以本机结果代替。
 
 本轮 Chromium 补丁策略仍为准备态：固定 155.0.8059.40，硬件 54 项、屏幕 69 项独立策略检查和 Python 工具 15 项通过。`compiledChromium: false`、`p0Complete: false`；完整 Chromium 编译及原生运行验收尚未完成。当前源码 52 个 JavaScript 文件通过语法检查；外部原始证据被清理后，溯源脚本明确报告 `source-unavailable`。
+
+2026-10-13 追加 CI 修复：Windows 作业 115584013719 已确认在批量编辑的 `innerWidth === 500` 等待处超时，前七项实际操作检查通过。窄窗测试改用 `setContentSize` 指定网页内容区域，并同时修复任务测试中的同类假设；本地批量编辑 8 项、任务 13 项重新通过。CI 新增实际 JSON 报告摘要及失败注解，保留 partial/unavailable/skipped 状态。Windows 修复结果以新作业的实际结论为准。
