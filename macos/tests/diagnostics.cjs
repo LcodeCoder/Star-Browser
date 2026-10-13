@@ -16,7 +16,7 @@ async function browserPanel(){await browser.locator('#browserMenuBtn').click();a
  fs.mkdirSync(output,{recursive:true});
  try{
   origin=await startOrigin();
-  app=await _electron.launch({args:['.'],cwd:process.cwd(),env:{...process.env,TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:dir,TFB_TEST_ORIGIN_PORT:String(origin.port)}});
+  app=await _electron.launch({...process.env.STAR_QA_EXECUTABLE?{executablePath:process.env.STAR_QA_EXECUTABLE,args:[]}:{args:['.']},cwd:process.cwd(),env:{...process.env,TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:dir,TFB_TEST_ORIGIN_PORT:String(origin.port)}});
   manager=await app.firstWindow();manager.on('pageerror',error=>errors.push(error.message));await manager.locator('#btnNew').waitFor();
   profile=await api('create',{name:'检测入口环境',os:process.platform==='win32'?'win':'mac',country:'UK',langManual:true,language:'en-GB',timezoneManual:true,timezone:'Europe/London',startUrl:'about:home'});
   await check('固定检测目录与无效项目拒绝，不创建多余环境',async()=>{
@@ -68,7 +68,7 @@ async function browserPanel(){await browser.locator('#browserMenuBtn').click();a
    const found=await api('chrome');if(!found){results.push({name:'本机 Chrome 未安装',status:'not-available'});return {available:false};}
    const native=await api('create',{name:'本机 Chrome 检测',os:process.platform==='win32'?'win':'mac',country:'UK',langManual:true,language:'en-GB',timezoneManual:true,timezone:'Europe/London',startUrl:origin.url+'/probe'});await api('launch',native.id);
    const opened=await api('diagnosticOpen',native.id,'browserscan');assert.equal(opened.engine,'chrome');
-   const observed=await app.evaluate(async(_ ,id)=>{const require=process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json'),running=require('./src/main/launcher').getLaunchedBrowser(id);const {targetInfos}=await running.pipe.send('Target.getTargets');return {profile:running.profileId||id,version:running.fingerprint.chromeVersion,targets:targetInfos.filter(t=>t.type==='page').map(t=>({id:t.targetId,url:t.url}))};},native.id);
+   const observed=await app.evaluate(async({app} ,id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json'),running=require('./src/main/launcher').getLaunchedBrowser(id);const {targetInfos}=await running.pipe.send('Target.getTargets');return {profile:running.profileId||id,version:running.fingerprint.chromeVersion,targets:targetInfos.filter(t=>t.type==='page').map(t=>({id:t.targetId,url:t.url}))};},native.id);
    assert.ok(observed.targets.length>=2);await api('action','stop',[native.id]);return {available:true,version:observed.version,pages:observed.targets.length};
   });
   await check('检测流程无未处理页面脚本错误',async()=>assert.deepEqual(errors,[]));
