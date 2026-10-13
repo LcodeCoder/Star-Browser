@@ -1,6 +1,6 @@
 {
   "name": "star-browser",
-  "version": "0.11.0",
+  "version": "0.13.0",
   "private": true,
   "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
@@ -27,7 +27,11 @@
     "test:fingerprint": "node tests/fingerprint.cjs",
     "test:tabs": "node tests/browser-tabs.cjs",
     "test:task-transfer": "node tests/task-transfer.cjs",
-    "test:browser-settings": "node tests/browser-settings.cjs"
+    "test:browser-settings": "node tests/browser-settings.cjs",
+    "build:win": "npm run build:ui && electron-builder --win --x64 --publish never",
+    "build:win:arm64": "npm run build:ui && electron-builder --win --arm64 --publish never",
+    "test:workbench-browser": "node tests/workbench-browser.cjs",
+    "test:experience": "node tests/experience-quality.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
@@ -80,6 +84,19 @@
     },
     "dmg": {
       "title": "Star Browser ${version}"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "Star-Browser-${version}-win-${arch}.${ext}",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
   }
 }

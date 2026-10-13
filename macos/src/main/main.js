@@ -82,6 +82,8 @@ const FP_CORE_SRC = fs.readFileSync(
       // 先捕获 session 引用：webContents 销毁后访问 wc.session getter 会抛
       // "Object has been destroyed"（main.js:431 崩溃根因），回调内只用 _sess 即可避开。
       const _sess = ses;
+      const hints=require("./client-hints-headers").createClientHints();
+      _sess.webRequest.onHeadersReceived((details,callback)=>{try{hints.receive(details.url,details.responseHeaders);}finally{callback({responseHeaders:details.responseHeaders});}});
       _sess.webRequest.onBeforeSendHeaders((details, callback) => {
         try {
           const L = _sess.__tfbLang || "en-US";
@@ -90,6 +92,7 @@ const FP_CORE_SRC = fs.readFileSync(
           const fp=_sess.__tfbFp;
           if(fp){const meta=fingerprintMetadata(fp);hdrs["User-Agent"]=fp.userAgent;for(const key of Object.keys(hdrs)){const lower=key.toLowerCase();if(lower==='sec-ch-ua')hdrs[key]=meta.brands.map(b=>`"${b.brand}";v="${b.version}"`).join(', ');if(lower==='sec-ch-ua-platform')hdrs[key]=JSON.stringify(meta.platform);if(lower==='sec-ch-ua-mobile')hdrs[key]=meta.mobile?'?1':'?0';}}
 
+          hints.apply(details.url,hdrs,fp);
           callback({ requestHeaders: hdrs });
         } catch (_) {
           try {
@@ -105,8 +108,18 @@ const FP_CORE_SRC = fs.readFileSync(
 function prepareGuestFingerprint(wc, fingerprint) {
   if (wc.__tfbFpInjected) return Promise.resolve(true);
   if (wc.__starFingerprintPreparing) return wc.__starFingerprintPreparing;
+  if(!wc.__starDebuggerLifecycle){
+    wc.__starDebuggerLifecycle=true;
+    wc.debugger.on("detach",()=>{
+      wc.__tfbFpInjected=false;
+      if(wc.__starTargetHandler)wc.debugger.removeListener("message",wc.__starTargetHandler);
+      wc.__starTargetsBound=false;
+    });
+    wc.on("devtools-closed",()=>{if(!wc.isDestroyed())prepareGuestFingerprint(wc,wc.session.__tfbFp||fingerprint).catch(error=>dbg("DEVTOOLS-RESTORE "+error.message));});
+  }
   const source=FP_CORE_SRC+"\n;try{if(window.installFingerprint)window.installFingerprint("+JSON.stringify(fingerprint)+");}catch(e){}";
   const job=(async()=>{
+    await require("./fingerprint-protocol").captureNativeHints(wc.hostWebContents);
     const api=wc.debugger;if(!api.isAttached())api.attach("1.3");
     const send=(method,params)=>new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>reject(new Error("浏览器配置超时："+method)),5000);
@@ -115,7 +128,8 @@ function prepareGuestFingerprint(wc, fingerprint) {
     await send("Page.enable",{});
     await applyProtocol(send,fingerprint);
     await require("./fingerprint-targets").bindElectronTargets(wc,fingerprint,source);
-    await send("Page.addScriptToEvaluateOnNewDocument",{source});
+    if(wc.__starFpScript)await send("Page.removeScriptToEvaluateOnNewDocument",{identifier:wc.__starFpScript}).catch(()=>{});
+    wc.__starFpScript=(await send("Page.addScriptToEvaluateOnNewDocument",{source})).identifier;
     wc.__tfbFingerprint=fingerprint;wc.__tfbFpInjected=true;
     bindLangHeader(wc,fingerprint.language);
     dbg("GUEST-FP-READY id="+wc.id+" tz="+fingerprint.timezone+" lang="+fingerprint.language);
@@ -343,6 +357,7 @@ function resolveMode() {
 }
 
 // ---------------- 中文应用菜单（替代 Electron 默认英文菜单）----------------
+function isDevToolsShortcut(input){return input.key==="F12"||((input.code==="KeyI"||input.key.toLowerCase()==="i")&&((input.control&&input.shift)||(input.meta&&input.alt)));}
 function sendBrowserCommand(command, fallback) {
   const focused=BrowserWindow.getFocusedWindow();
   if(focused?._profile)focused.webContents.send('star:browserCommand',command);
@@ -396,6 +411,8 @@ function setAppMenu(mode) {
         {
           label: "关闭标签页", accelerator: "CmdOrCtrl+W",
           click: () => {
+            const inspected=require("electron").webContents.getAllWebContents().find(w=>!w.isDestroyed()&&w.isDevToolsFocused());
+            if(inspected){inspected.closeDevTools();return;}
             const focused = BrowserWindow.getFocusedWindow();
             if (!focused) return;
             if (focused._profile) focused.webContents.send("menu:close-tab");
@@ -434,6 +451,7 @@ function setAppMenu(mode) {
         { label: "放大",accelerator:"CmdOrCtrl+Plus",click:()=>sendBrowserCommand("zoom-in",w=>w.webContents.setZoomFactor(Math.min(2,w.webContents.getZoomFactor()+.1))) },
         { label: "缩小",accelerator:"CmdOrCtrl+-",click:()=>sendBrowserCommand("zoom-out",w=>w.webContents.setZoomFactor(Math.max(.5,w.webContents.getZoomFactor()-.1))) },
         { type: "separator" },
+        { label: "开发者工具",accelerator:process.platform==="darwin"?"Alt+Command+I":"Ctrl+Shift+I",click:()=>sendBrowserCommand("devtools",w=>w.webContents.toggleDevTools()) },
         { label: "全屏", role: "togglefullscreen" },
       ],
     },
@@ -563,11 +581,8 @@ function createBrowseWindow(profile, fingerprint) {
   });
   // F12 切换 DevTools
   browserWin.webContents.on("before-input-event", (event, input) => {
-    if (
-      input.key === "F12" ||
-      ((input.control || input.meta) && input.shift && input.key.toLowerCase() === "i")
-    ) {
-      browserWin.webContents.toggleDevTools();
+    if (input.type === "keyDown" && isDevToolsShortcut(input)) {
+      browserWin.webContents.send("star:browserCommand","devtools");
       event.preventDefault();
     }
   });
@@ -974,6 +989,7 @@ function registerIpc() {
       });
       fp.webrtc = p.webrtc || "disable";
     }
+    await require("./fingerprint-protocol").captureNativeHints(e?.sender||win?.webContents);
     const res = await launchProfile(p, paths, fp);
     store.touchOpened(id);
     store.activity("启动浏览器", p.name, "本机 Chrome");
@@ -1266,6 +1282,13 @@ function registerIpc() {
     return prepareGuestFingerprint(wc,fingerprint);
   });
 
+  ipcMain.handle("guest:devtools", async (e,id)=>{
+    const wc=require("electron").webContents.fromId(Number(id));
+    if(!wc||wc.isDestroyed()||wc.getType()!=="webview"||wc.hostWebContents!==e.sender)throw new Error("无法调试此浏览器标签");
+    if(wc.isDevToolsOpened())wc.closeDevTools();else wc.openDevTools({mode:"detach"});
+    return {ok:true};
+  });
+
   // 拦截 webview guest 的弹窗（target=_blank / window.open）：拒绝建独立窗口，把 URL 发回宿主渲染端开新标签。
   // 注意：渲染端 webview 的 `new-window` 事件 preventDefault 在 Electron 31 不可靠（该事件已被 setWindowOpenHandler 取代），
   // 故用主进程 setWindowOpenHandler 才是稳妥做法。
@@ -1419,7 +1442,7 @@ function registerIpc() {
   // ---------------- 批量代理检测 ----------------
   // 逐条输出：连通性+延迟、出口 IP、国家/州/城市、时区、运营商/ASN、IP 类型（住宅/机房/移动）、风控标记。
   // 并发执行，单条全程超时保护，避免某一条卡死拖垮整批。
-  const BATCH_CONCURRENCY = 25;
+  const { ProxyBatchRunner } = require("./proxy-batch");
 
   // 查询 IP 情报：运营商/ASN、是否机房/代理/移动（风控相关）。
   // 主用 ip-api.com（免费版即含 proxy/hosting/mobile 字段），ipinfo.io 补 org 与 privacy（VPN/代理/机房/中继）。
@@ -1427,10 +1450,11 @@ function registerIpc() {
     const out = {
       isp: "",
       asn: "",
-      mobile: false,
-      proxy: false,
-      hosting: false,
+      mobile: null,
+      proxy: null,
+      hosting: null,
       privacy: "",
+      known: false,
     };
     if (!ip) return out;
     const grab = (url) =>
@@ -1473,6 +1497,7 @@ function registerIpc() {
         )) || "null",
       );
       if (o && o.status === "success") {
+        out.known = true;
         out.isp = o.isp || "";
         out.asn = o.as || o.org || "";
         out.mobile = !!o.mobile;
@@ -1487,6 +1512,7 @@ function registerIpc() {
       if (o2) {
         if (!out.asn && o2.org) out.asn = o2.org;
         if (o2.privacy) {
+          out.known = true;
           const p = o2.privacy,
             flags = [];
           if (p.vpn) flags.push("VPN");
@@ -1503,7 +1529,7 @@ function registerIpc() {
     return out;
   }
 
-  async function checkOneProxy(raw) {
+  async function checkOneProxy(raw, {isCancelled = () => false} = {}) {
     const { parseProxyInput } = require("./proxy-parse");
     const t0 = Date.now();
     const out = {
@@ -1551,6 +1577,7 @@ function registerIpc() {
       out.error = "连接失败或超时";
       return out;
     }
+    if (isCancelled()) return {cancelled:true};
     // ② 出口 IP：用该代理建会话，走纯文本回显站点取真实出口（discoverProxyExitIp 已过滤 127.0.0.1 等私网地址）
     try {
       const ses = session.fromPartition(
@@ -1573,6 +1600,7 @@ function registerIpc() {
         out.error = "可用，但未取得出口IP";
         return out;
       }
+      if (isCancelled()) return {cancelled:true};
       out.exitIp = exitIp;
       // ③ 地理：5 源投票拿国家/城市/时区/运营商
       try {
@@ -1597,6 +1625,7 @@ function registerIpc() {
           out.org = g.org || "";
         }
       } catch (_) {}
+      if (isCancelled()) return {cancelled:true};
       // ④ IP 类型 / 风控
       try {
         const it = await withTimeout(fetchIpIntel(exitIp), 9000);
@@ -1613,9 +1642,9 @@ function registerIpc() {
           } else if (it.proxy) {
             out.ipType = "代理/VPN";
             out.risk = "高";
-          } else {
-            out.ipType = "住宅";
-            out.risk = "低";
+          } else if (it.known) {
+            out.ipType = "未标记";
+            out.risk = "未发现来源标记";
           }
           if (it.privacy) out.risk += " · " + it.privacy;
         }
@@ -1627,26 +1656,21 @@ function registerIpc() {
     return out;
   }
 
-  ipcMain.handle("proxy:batchCheck", async (e, list) => {
-    const arr = (Array.isArray(list) ? list : [])
-      .map((s) => String(s || "").trim())
-      .filter(Boolean);
-    const results = [];
-    for (let i = 0; i < arr.length; i += BATCH_CONCURRENCY) {
-      const chunk = arr.slice(i, i + BATCH_CONCURRENCY);
-      const part = await Promise.all(
-        chunk.map((r) =>
-          checkOneProxy(r).catch(() => ({
-            raw: r,
-            ok: false,
-            error: "检测异常",
-          })),
-        ),
-      );
-      results.push(...part);
+  const proxyBatches = new ProxyBatchRunner(checkOneProxy);
+  const batchOwners = new WeakSet();
+  ipcMain.handle("proxy:batchCheck", async (e, list, requestId) => {
+    if (!batchOwners.has(e.sender)) {
+      batchOwners.add(e.sender);
+      const ownerId = e.sender.id;
+      e.sender.once("destroyed", () => proxyBatches.close(ownerId));
     }
-    return { ok: true, results };
+    try {
+      return await proxyBatches.run(e.sender.id, list, requestId, progress => {
+        if (!e.sender.isDestroyed()) e.sender.send("proxy:batchProgress", progress);
+      });
+    } catch (error) { return {ok:false, error:error.message}; }
   });
+  ipcMain.handle("proxy:batchCancel", (e, requestId) => proxyBatches.cancel(e.sender.id, requestId));
 
   // Pro：菜单「新建环境」-> 通知渲染端打开弹窗
   ipcMain.on("menu:new", () => {
@@ -2565,7 +2589,9 @@ app.whenReady().then(() => {
     } catch (_) {}
     if (t === "webview") {
       wc.on("before-input-event",(event,input)=>{
-        if(input.type!=="keyDown"||!(input.meta||input.control))return;
+        if(input.type!=="keyDown")return;
+        if(isDevToolsShortcut(input)){event.preventDefault();wc.hostWebContents?.send("star:browserCommand","devtools");return;}
+        if(!(input.meta||input.control))return;
         const key=input.key.toLowerCase(),host=wc.hostWebContents;if(!host||host.isDestroyed())return;
         const commands={f:"find",l:"address",y:"history","+":"zoom-in","=":"zoom-in","-":"zoom-out","0":"zoom-reset"};
         if(commands[key]){event.preventDefault();host.send("star:browserCommand",commands[key]);}

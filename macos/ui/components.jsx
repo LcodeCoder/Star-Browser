@@ -9,8 +9,8 @@ function Logo({ className = "" }) {
 function Button({ children, variant = "", className = "", icon: Icon, ...props }) {
   return <button className={`button ${variant} ${className}`} {...props}>{Icon && <Icon size={16} />} {children}</button>;
 }
-function IconButton({ icon: Icon, label, ...props }) {
-  return <button className="icon-button" aria-label={label} title={label} {...props}><Icon size={17} /></button>;
+function IconButton({ icon: Icon, label, className="", ...props }) {
+  return <button className={"icon-button "+className} aria-label={label} title={label} {...props}><Icon size={17} /></button>;
 }
 function Modal({ open, onOpenChange, title, description, children, footer, wide = false, id, dismissible = true, returnFocus }) {
   const previousFocus=React.useRef(null),wasOpen=React.useRef(false);if(open&&!wasOpen.current)previousFocus.current=document.activeElement;wasOpen.current=open;

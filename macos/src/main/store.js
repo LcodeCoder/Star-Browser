@@ -129,7 +129,7 @@ class Store extends EventEmitter {
       group: partial.group || "默认分组",
       note: partial.note || "",
       tags: partial.tags || [],
-      os: partial.os || "mac",
+      os: partial.os || (process.platform === "win32" ? "win" : "mac"),
       country: partial.country || "US",
       timezone: partial.timezone || "", // 空 = 自动跟随出口 IP 地理时区
       timezoneManual: partial.timezoneManual || false, // true = 使用上面手动指定的 timezone

@@ -14,3 +14,5 @@ macos/build/icon.iconset/
 .env.*
 !.env.example
 ChangYiBrowser-electron-extract/
+
+macos/dist-win*/

@@ -61,7 +61,9 @@ contextBridge.exposeInMainWorld("api", {
   // 代理出口 IP 自检（主进程用独立 session 走该环境代理请求检测服务）
   proxyCheck: (proxy) => ipcRenderer.invoke("proxy:check", proxy),
   // 批量代理检测：传入代理文本数组，逐条返回连通性/延迟/出口IP/所在地/时区/IP类型/风控
-  proxyBatchCheck: (list) => ipcRenderer.invoke("proxy:batchCheck", list),
+  proxyBatchCheck: (list, requestId) => ipcRenderer.invoke("proxy:batchCheck", list, requestId),
+  proxyBatchCancel: requestId => ipcRenderer.invoke("proxy:batchCancel", requestId),
+  onProxyBatchProgress: cb => subscribe("proxy:batchProgress", cb),
   // 根据代理出口 IP 自动对齐指纹时区/语言，返回新 payload（overrideLang=false 时仅同步时区）
   syncGeo: (opts) => ipcRenderer.invoke("browse:syncGeo", opts),
   // 主进程后台对齐完成后回推已对齐指纹（不阻塞窗口打开），渲染端据此重建注入
@@ -70,6 +72,8 @@ contextBridge.exposeInMainWorld("api", {
   onToast: (cb) => subscribe("tfb:toast", cb),
   // 当前构建版本号（客户端用于辨认是否为最新包）
   version: () => "star-2026-10-12",
+  platform: process.platform,
+  guestDevTools: id => ipcRenderer.invoke("guest:devtools",id),
   snapshot: (token) => ipcRenderer.invoke("star:snapshot", token),
   action: (action, ids, patch) => ipcRenderer.invoke("star:action", action, ids, patch),
   exportProfiles: ids => ipcRenderer.invoke("star:export", ids),

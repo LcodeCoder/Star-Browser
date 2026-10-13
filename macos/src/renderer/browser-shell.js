@@ -62,6 +62,7 @@ function go(u) {
   try {
     if(t.web.__starReady){t.web.src=u||"about:blank";}else{t.web.__starPendingURL=u||"about:blank";setupGuestInjection(t.web,t.id);}
     t.url = u || "";
+    addr.value=t.url;
     armNav(u);
     updateNavButtons();
   } catch (err) {
@@ -754,22 +755,6 @@ function showUpdateBar(cfg, forced) {
 }
 
 // ---------------- 批量代理检测 ----------------
-const batchPanel = $("batchPanel");
-let batchResults = [];
-$("batchBtn").addEventListener("click", () => {
-  panel.hidden = true;
-  launcher.hidden = true;
-  batchPanel.hidden = !batchPanel.hidden;
-});
-$("batch-close").addEventListener("click", () => {
-  batchPanel.hidden = true;
-});
-$("batch-clear").addEventListener("click", () => {
-  $("batch-input").value = "";
-  $("batch-body").innerHTML = "";
-  $("batch-status").textContent = "—";
-  batchResults = [];
-});
 function esc(s) {
   return String(s == null ? "" : s).replace(
     /[&<>"]/g,
@@ -801,147 +786,6 @@ function showGeoWarn(info) {
     });
   }
 }
-function tagFor(t) {
-  if (t === "住宅") return '<span class="tag res">住宅</span>';
-  if (t === "机房") return '<span class="tag dc">机房</span>';
-  if (t === "移动") return '<span class="tag mb">移动</span>';
-  return t ? '<span class="tag">' + esc(t) + "</span>" : "—";
-}
-function renderBatch(list) {
-  const body = $("batch-body");
-  if (!body) return;
-  body.innerHTML = "";
-  (list || []).forEach((r) => {
-    const tr = document.createElement("tr");
-    const st = r.ok
-      ? '<span class="st-ok">✓ 可用</span>'
-      : '<span class="st-fail">✗ ' + esc(r.error || "失败") + "</span>";
-    const loc =
-      [r.country, r.region, r.city].filter(Boolean).join(" / ") || "—";
-    tr.innerHTML =
-      "<td>" +
-      st +
-      "</td>" +
-      "<td>" +
-      (r.latency ? r.latency + " ms" : "—") +
-      "</td>" +
-      "<td>" +
-      (esc(r.exitIp) || "—") +
-      "</td>" +
-      "<td>" +
-      esc(loc) +
-      "</td>" +
-      "<td>" +
-      (esc(r.timezone) || "—") +
-      "</td>" +
-      "<td>" +
-      tagFor(r.ipType) +
-      "</td>" +
-      "<td>" +
-      (esc(r.risk) || "—") +
-      "</td>" +
-      "<td>" +
-      (esc(r.isp || r.asn) || "—") +
-      "</td>" +
-      "<td>" +
-      esc(r.host ? r.host + ":" + r.port : r.raw) +
-      "</td>";
-    body.appendChild(tr);
-  });
-}
-$("batch-run").addEventListener("click", async () => {
-  const raw = ($("batch-input").value || "")
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!raw.length) {
-    toast("请先粘贴代理列表");
-    return;
-  }
-  const btn = $("batch-run");
-  btn.disabled = true;
-  btn.textContent = "检测中…";
-  $("batch-status").textContent = "正在检测 " + raw.length + " 条，请稍候…";
-  try {
-    const r = await window.api.proxyBatchCheck(raw);
-    batchResults = (r && r.results) || [];
-    renderBatch(batchResults);
-    const okN = batchResults.filter((x) => x.ok).length;
-    $("batch-status").textContent =
-      "共 " +
-      batchResults.length +
-      " 条：可用 " +
-      okN +
-      " 条，失败 " +
-      (batchResults.length - okN) +
-      " 条";
-  } catch (e) {
-    $("batch-status").textContent = "检测失败：" + (e.message || e);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "开始检测";
-  }
-});
-$("batch-export").addEventListener("click", () => {
-  if (!batchResults.length) {
-    toast("没有可导出的结果");
-    return;
-  }
-  const head = [
-    "状态",
-    "延迟(ms)",
-    "出口IP",
-    "国家",
-    "州/省",
-    "城市",
-    "时区",
-    "IP类型",
-    "风控",
-    "运营商",
-    "ASN",
-    "代理地址",
-    "原始输入",
-  ];
-  const rows = batchResults.map((r) => [
-    r.ok ? "可用" : "失败:" + (r.error || ""),
-    r.latency || "",
-    r.exitIp || "",
-    r.country || "",
-    r.region || "",
-    r.city || "",
-    r.timezone || "",
-    r.ipType || "",
-    r.risk || "",
-    r.isp || "",
-    r.asn || "",
-    r.host ? r.host + ":" + r.port : "",
-    r.raw || "",
-  ]);
-  const csv =
-    "\ufeff" +
-    [head]
-      .concat(rows)
-      .map((a) =>
-        a
-          .map(
-            (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"',
-          )
-          .join(","),
-      )
-      .join("\r\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(
-    new Blob([csv], { type: "text/csv;charset=utf-8" }),
-  );
-  a.download =
-    "proxy-check-" +
-    new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") +
-    ".csv";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  toast("已导出 CSV");
-});
-
 $("launchBtn").addEventListener("click", () => {
   panel.hidden = true;
   launcher.hidden = !launcher.hidden;
@@ -963,7 +807,7 @@ launcher.addEventListener("click", (e) => {
 $("bmBtn").addEventListener("click", () => {
   $("settings").hidden = true;
   $("launcher").hidden = true;
-  $("batchPanel").hidden = true;
+  StarNetwork.close(false);
   const bp = $("bmPanel");
   bp.hidden = !bp.hidden;
   if (!bp.hidden) renderBookmarks();
@@ -1449,8 +1293,8 @@ function makeWebview(tabId) {
     "partition",
     "persist:tfb-env-" + (profile && profile.id ? profile.id : "lite"),
   );
-  if (profile && profile.fingerprint && profile.fingerprint.userAgent)
-    w.setAttribute("useragent", profile.fingerprint.userAgent);
+  // CDP sets UA and Client Hints together before the first remote navigation.
+  // A webview useragent attribute suppresses Chromium Client Hints request headers.
   if (profile && profile.preloadURL)
     w.setAttribute("preload", profile.preloadURL);
 
@@ -1459,7 +1303,7 @@ function makeWebview(tabId) {
     setupGuestInjection(w, tabId);
   });
   w.addEventListener("did-start-loading", () => {
-    if (activeId === tabId) spinner.style.display = "block";
+    setTabLoading(tabId,true);
   });
   // 服务器一回包（主文档响应开始）即取消超时——这是最早可靠的「站点可达」信号，
   // 彻底避免对慢加载但可访问的站点（如 osdwan）误报超时。
@@ -1468,7 +1312,7 @@ function makeWebview(tabId) {
   });
   // 主文档加载完成（必触发，早于 did-stop-loading）即取消超时，避免对可访问站点误报
   w.addEventListener("did-finish-load", () => {
-    if (activeId === tabId) spinner.style.display = "none";
+    setTabLoading(tabId,false);
     disarmNav();
     updateNavButtons();
     refreshTitle(tabId);
@@ -1476,7 +1320,7 @@ function makeWebview(tabId) {
     StarBrowser.settled(tabId,w);
   });
   w.addEventListener("did-stop-loading", () => {
-    if (activeId === tabId) spinner.style.display = "none";
+    setTabLoading(tabId,false);
     disarmNav();
     updateNavButtons();
     refreshTitle(tabId);
@@ -1551,11 +1395,11 @@ function updateNavButtons() {
     $("forward").disabled = true;
   }
 }
-function updateAddrFromActive() {
+function updateAddrFromActive(force=false) {
   const t = activeTab();
   if (!t) return;
   try {
-    if (document.activeElement !== addr) addr.value = t.ntp ? "" : t.web.__starPendingURL || (t.web.getURL()==="about:blank"?t.url:t.web.getURL());
+    if (force || document.activeElement !== addr) {let url="";try{url=t.web?.getURL()||"";}catch{}addr.value=t.ntp?"":t.web?.__starPendingURL||(!url||url==="about:blank"?t.url:url);}
   } catch (e) {}
   updateNavButtons();
 }
@@ -1577,7 +1421,7 @@ function refreshTitle(tabId) {
     if (!t.ntp) title = (t.web.getTitle && t.web.getTitle()) || "";
   } catch (e) {}
   title = (title || "").trim();
-  t.title = title || "新标签";
+  t.title = !t.ntp && (!title||title==="about:blank") && /^https?:/.test(t.url) ? new URL(t.url).hostname : title || "新标签";
   renderTabs();
   if (activeId === tabId) {
     document.title = winTitle(t.title);
@@ -1592,17 +1436,26 @@ function rebuildAllTabs() {
 }
 
 // ---------------- 标签管理 ----------------
+function syncLoading() {
+  const t=activeTab(),loading=!!t?.loading&&!t.ntp;
+  spinner.style.display=loading?"block":"none";
+  const reload=$("reload");reload.innerHTML=StarBrowser.icon(loading?"X":"RotateCw");
+  reload.title=loading?"停止加载":"刷新";reload.setAttribute("aria-label",reload.title);
+  $("addr").setAttribute("aria-busy",String(loading));
+  for(const tab of tabs)tabsEl.querySelector(`[data-tab-id="${tab.id}"]`)?.classList.toggle("loading",!!tab.loading&&!tab.ntp);
+}
+function setTabLoading(id,loading){const t=tabs.find(t=>t.id===id);if(t)t.loading=loading;syncLoading();}
 function renderTabs() {
   tabsEl.innerHTML = "";
   tabs.forEach((t) => {
     const el = document.createElement("div");
-    el.className = "tab" + (t.id === activeId ? " active" : "");
+    el.className = "tab" + (t.id === activeId ? " active" : "") + (t.loading&&!t.ntp?" loading":"");
     el.title = t.url || t.title;
     el.setAttribute("role","tab");el.setAttribute("aria-selected",String(t.id===activeId));el.tabIndex=t.id===activeId?0:-1;
     el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();activateTab(t.id);}if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();StarBrowser.command(e.key==="ArrowRight"?"next-tab":"previous-tab");tabsEl.querySelector('[aria-selected="true"]')?.focus();}});
     el.innerHTML =
       '<span class="title"></span><button class="close" title="关闭标签">×</button>';
-    el.querySelector(".title").textContent = t.title || "新标签";
+    el.querySelector(".title").textContent = t.title === "about:blank" && !t.ntp ? "正在打开…" : t.title || "新标签";
     el.querySelector(".close").setAttribute("aria-label","关闭 "+(t.title||"新标签"));
     el.addEventListener("click", (e) => {
       if (e.target.classList.contains("close")) return;
@@ -1632,15 +1485,23 @@ function activateTab(id) {
   });
   hideFatal();
   disarmNav();
-  updateAddrFromActive();
+  updateAddrFromActive(true);
   const at = tabs.find((x) => x.id === id);
   if (at && at.ntp) showNtp();
   else {
     $("ntp").hidden = true;
   }
   renderTabs();
+  requestAnimationFrame(() => {
+    const selected = tabsEl.querySelector(`[data-tab-id="${activeId}"]`);
+    if (!selected) return;
+    const item = selected.getBoundingClientRect(), viewport = tabsEl.getBoundingClientRect();
+    const delta = item.left < viewport.left ? item.left-viewport.left : item.right > viewport.right ? item.right-viewport.right : 0;
+    if (delta) tabsEl.scrollBy({left:delta,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  });
   const t = activeTab();
   if (t) document.title = winTitle(t.title);
+  syncLoading();
   StarBrowser.tabChanged();
 }
 
@@ -1710,8 +1571,8 @@ $("reload").addEventListener("click", () => {
   const t = activeTab();
   if (t)
     try {
-      t.web.reload();
-      armNav(t.web.getURL());
+      if(t.loading){t.web.stop();setTabLoading(t.id,false);disarmNav();}
+      else {t.web.reload();armNav(t.web.getURL());}
     } catch (e) {}
 });
 $("home").addEventListener("click", () => {
@@ -1725,7 +1586,7 @@ if ($("bmBarMore"))
   $("bmBarMore").addEventListener("click", () => {
     $("settings").hidden = true;
     $("launcher").hidden = true;
-    $("batchPanel").hidden = true;
+    StarNetwork.close(false);
     const bp = $("bmPanel");
     bp.hidden = !bp.hidden;
     if (!bp.hidden) renderBookmarks();

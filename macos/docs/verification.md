@@ -167,3 +167,25 @@
 - 0.10.0 的 8 项任务文件复用、8 项同步和 8 项备份专项，0.3.0 的权限/API/规模专项与其他历史证据保留；此轮以受影响专项和完整实际安装包验证为准，不把未重跑专项写成新通过。
 
 最终构建为 0.11.0 Apple Silicon .app/.dmg/.zip，使用 ad hoc 签名，尚未 Developer ID 公证；Intel 仍需对应机器验证。完整交付与范围见 release-0.11.0.md。
+
+## 0.12.0 浏览器、工作台与 Windows 构建
+
+2026-10-12（America/Los_Angeles）：32 项单元、11 项工作台/浏览器专项、16 项指纹通过（另 2 项边界观察）、24 项 E2E、9 项设置、8 项标签与 12 项实际 Mac 安装包检查通过。新专项覆盖 HTTP Client Hints 低熵/来源声明后高熵值、当前网页 DevTools、工具开启时刷新、快捷键、关闭工具、加载/停止、标签切换、地址栏、窄窗、浅深主题、离线、搜索详情返回及手动 WebGL 保存。
+
+外网真实浏览器：BrowserScan 重新加载后 100%；BrowserLeaks 的 JS/HTTP Client Hints 一致，Canvas 绘制正常、WebGL 为原生 Apple M4、WebRTC 显示 No Leak。DNS 与 IPv6 的网络不一致仍存在，详见 release-0.12.0.md，不能当作全部隐私检查通过。
+
+Windows x64 NSIS/ZIP 交叉构建成功；验证 PE 架构、asar 版本与主要源码一致。无 Windows 真机执行记录。新增 CI 配置尚未在远程运行。Mac 使用 ad hoc 签名；Windows 未签名。
+
+本轮证据目录 `test-results/star-0.12.0/`，构建哈希与比对 `artifacts.json`，UI 专项 `workbench-browser.json`，外网文本 `browserleaks-client-hints.txt` / `browserscan.txt`。
+
+
+## 工作台与浏览器体验 0.13.0
+
+2026-10-12（America/Los_Angeles）：36 项单元测试、11 项体验专项、11 项工作台/浏览器专项、16 项指纹专项和 24 项端到端回归通过；21 个原始文件保留、35 个运行时 JavaScript 文件语法检查通过。体验证据保存在 `test-results/star-0.13.0/experience-quality.json` 与截图；浏览器操作证据保存在 `test-results/star-0.12.0/workbench-browser.json`。
+
+- 批量检测改为固定标题/底部操作、可读的 140px 多行输入、连续结果区；1280、780、640px 实际窗口均已检查。九列数据允许横向滚动，输入与操作区不会被挤扁。
+- 关闭按钮、输入、筛选和可滚动结果表格均可用 Tab / Shift+Tab 访问。背景在模态操作期间设为 inert；从窄窗口菜单打开后，关闭会返回可见的菜单入口。
+- 主题颜色同步切换，避免文字和底色分别插值产生短暂低对比。浅深主题已测文字/底色实际值；本次抽检的普通文字、输入、失败状态与主要按钮最低比值为 5.03:1。
+- 保留系统滚轮和触控板原生滚动；定位与标签溢出使用平滑滚动，减少动态效果时停用。新标签按钮紧邻标签末尾，35 标签实际溢出和当前标签定位已测。
+- 逐条检测、搜索/筛选、关闭重开、停止、500 条上限与就地错误均验证。开发者工具的菜单、F12、宿主快捷键均作用于当前网页；加载状态不覆盖工具栏按钮。
+- GitHub Actions 配置 macOS / Windows 运行单元、工作台/浏览器和体验专项并保留证据；尚无本轮 Windows 真机或该远程工作流的运行结果，不能写为跨平台已验收。

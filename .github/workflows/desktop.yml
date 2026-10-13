@@ -1,0 +1,41 @@
+name: Desktop validation
+on:
+  workflow_dispatch:
+  push:
+    paths: ['macos/**', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['macos/**', '.github/workflows/desktop.yml']
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: macos/package-lock.json
+      - run: npm ci
+      - run: npm run build:ui
+      - run: npm test
+      - run: npm run test:workbench-browser
+      - run: npm run test:experience
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-${{ runner.os }}
+          path: |
+            macos/test-results/star-0.12.0/
+            macos/test-results/star-0.13.0/
+            macos/dist/*.exe
+            macos/dist/*win*.zip

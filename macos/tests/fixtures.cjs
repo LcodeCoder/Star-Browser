@@ -26,6 +26,9 @@ async function startOrigin() {
   const requests = [];
   const fixture = await listen(http.createServer((req, res) => {
     requests.push({url: req.url, headers: req.headers});
+    if(req.url.startsWith('/client-hints')){
+      res.writeHead(200,{'Content-Type':'application/json','Accept-CH':'Sec-CH-UA-Arch, Sec-CH-UA-Platform-Version, Sec-CH-UA-Full-Version-List'});res.end(JSON.stringify(req.headers));return;
+    }
     if(req.url.startsWith('/silence.wav')){
       const bytes=32000,sound=Buffer.alloc(44+bytes,128);sound.write('RIFF',0);sound.writeUInt32LE(36+bytes,4);sound.write('WAVEfmt ',8);sound.writeUInt32LE(16,16);sound.writeUInt16LE(1,20);sound.writeUInt16LE(1,22);sound.writeUInt32LE(8000,24);sound.writeUInt32LE(8000,28);sound.writeUInt16LE(1,32);sound.writeUInt16LE(8,34);sound.write('data',36);sound.writeUInt32LE(bytes,40);
       res.writeHead(200,{'Content-Type':'audio/wav','Content-Length':sound.length});res.end(sound);return;

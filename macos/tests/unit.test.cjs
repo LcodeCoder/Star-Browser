@@ -163,7 +163,7 @@ test('加密备份流式往返、文件权限、错误密码和篡改清理',asy
   const source=path.join(dir,'source');fs.mkdirSync(source);const bytes=crypto.randomBytes(2*1024*1024);fs.writeFileSync(path.join(source,'data.bin'),bytes);
   const archive=path.join(dir,'data.starbackup'),manifest={kind:'test',secret:'metadata-secret'};
   await writeArchive(archive,'test-password',manifest,await collectFiles(source,'profile'));
-  assert.equal(fs.statSync(archive).mode&0o777,0o600);assert.equal(fs.readFileSync(archive).includes(Buffer.from('metadata-secret')),false);
+  if(process.platform!=='win32')assert.equal(fs.statSync(archive).mode&0o777,0o600);assert.equal(fs.readFileSync(archive).includes(Buffer.from('metadata-secret')),false);
   const restored=await extractArchive(archive,'test-password',path.join(dir,'restored'));assert.deepEqual(restored.manifest,manifest);assert.deepEqual(fs.readFileSync(path.join(dir,'restored/profile/data.bin')),bytes);
   const wrong=path.join(dir,'wrong');await assert.rejects(extractArchive(archive,'wrong-password',wrong));assert.equal(fs.existsSync(wrong),false);
   const corrupted=fs.readFileSync(archive);corrupted[corrupted.length-1]^=1;fs.writeFileSync(path.join(dir,'corrupt.starbackup'),corrupted);
@@ -241,6 +241,77 @@ test('任务文件写入限制权限，替换失败保留旧文件并清理临�
  try{
   const store=new Store(path.join(dir,'data')),task={id:'export-test',name:'可备份任务',description:'',steps:[{type:'fill',selector:'#text',text:'private-file-content'}]};store.saveTask(task);transfer=new TaskTransfers(store);const document=transfer.document([task.id]),file=path.join(dir,'tasks.json');fs.writeFileSync(file,'old-file',{mode:0o644});
   const rename=t.mock.method(fs.promises,'rename',async()=>{throw new Error('QA rename denied');});await assert.rejects(transfer.write(file,document),/rename denied/);rename.mock.restore();assert.equal(fs.readFileSync(file,'utf8'),'old-file');assert.ok(!fs.readdirSync(dir).some(name=>name.endsWith('.tmp')));
-  await transfer.write(file,document);assert.equal(fs.statSync(file).mode&0o777,0o600);const preview=await transfer.preview(file,12);assert.equal(preview.count,1);assert.ok(!JSON.stringify(preview).includes('private-file-content'));assert.equal(transfer.apply(preview.token,12).count,1);assert.ok(!JSON.stringify(store.activities()).includes('private-file-content'));
+  await transfer.write(file,document);if(process.platform!=='win32')assert.equal(fs.statSync(file).mode&0o777,0o600);const preview=await transfer.preview(file,12);assert.equal(preview.count,1);assert.ok(!JSON.stringify(preview).includes('private-file-content'));assert.equal(transfer.apply(preview.token,12).count,1);assert.ok(!JSON.stringify(store.activities()).includes('private-file-content'));
  }finally{transfer?.dispose();fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('默认保留图形音频原生信号，历史指纹不能覆盖实际内核版本',()=>{
+ const fp=generateFingerprint('native-defaults',{os:'mac',chromeVersion:'152.0.7977.130',fingerprint:{chromeVersion:'124.0.0.0',userAgent:'old preview'}});
+ assert.deepEqual(fp.noise,{canvas:false,audio:false,webgl:false,clientRects:false});
+ assert.equal(fp.chromeVersion,'152.0.7977.130');assert.match(fp.userAgent,/Chrome\/152\.0\.0\.0/);
+ for(const signal of ['canvas','audio','webgl','clientRects'])assert.ok(fp.nativeSignals.includes(signal));
+ const explicit=generateFingerprint('explicit',{os:'mac',fingerprint:{noise:{canvas:true,audio:true,webgl:true}}});
+ assert.equal(explicit.noise.canvas,true);assert.equal(explicit.noise.audio,true);assert.equal(explicit.noise.webgl,true);
+ assert.ok(!explicit.nativeSignals.includes('webgl'));
+});
+
+
+test('Apple Silicon Client Hints 与宿主架构系统版本一致',()=>{
+ const {metadata}=require('../src/main/fingerprint-protocol');const fp=generateFingerprint('metadata',{os:'mac',chromeVersion:'152.0.7977.130'});
+ const hints=metadata(fp,{platform:'darwin',arch:'arm64',systemVersion:'26.1'});
+ assert.equal(hints.architecture,'arm');assert.equal(hints.platformVersion,'26.1.0');assert.equal(hints.fullVersion,fp.chromeVersion);
+ assert.equal(metadata(fp,{platform:'darwin',arch:'x64',systemVersion:'14.6.1'}).architecture,'x86');
+ const windows=metadata({...fp,os:'win'},{platform:'darwin',arch:'arm64',systemVersion:'26.1'});assert.equal(windows.architecture,'x86');assert.equal(windows.platformVersion,'10.0.0');
+});
+
+test('Windows x64/ARM64 Client Hints 使用原生系统数据，跨系统模拟保留独立值',()=>{
+ const {metadata}=require('../src/main/fingerprint-protocol');const fp=generateFingerprint('windows-native',{os:'win',chromeVersion:'152.0.7977.130'});
+ for(const [arch,architecture] of [['x64','x86'],['arm64','arm']]){
+  const result=metadata(fp,{platform:'win32',arch,hints:{platformVersion:'19.0.0',architecture,bitness:'64',wow64:false}});
+  assert.equal(result.platform,'Windows');assert.equal(result.platformVersion,'19.0.0');assert.equal(result.architecture,architecture);assert.equal(result.bitness,'64');
+ }
+ const simulated=metadata({...fp,os:'mac'},{platform:'win32',arch:'arm64',hints:{platformVersion:'19.0.0',architecture:'arm'}});assert.equal(simulated.platform,'macOS');assert.equal(simulated.platformVersion,'14.0.0');assert.equal(simulated.architecture,'x86');
+});
+
+test('手动 WebGL 配置必须成对填写，保存并生成真实选定值',()=>{
+ const {validateProfile}=require('../src/main/profile-validation');const fingerprint={noise:{webgl:true},webgl:{vendor:'QA vendor',renderer:'QA renderer'}};
+ const data=validateProfile({fingerprint});const fp=generateFingerprint('manual-webgl',{os:'win',...data});assert.deepEqual(fp.webgl,fingerprint.webgl);assert.equal(fp.noise.webgl,true);
+ assert.throws(()=>validateProfile({fingerprint:{webgl:{vendor:'incomplete'}}}),/同时填写/);
+});
+
+test('Client Hints 高熵头只在安全源声明后发送，按源隔离并支持撤销',()=>{
+ const {createClientHints}=require('../src/main/client-hints-headers'),hints=createClientHints(),fp=generateFingerprint('headers',{os:'mac',chromeVersion:'152.0.7977.130'});
+ assert.deepEqual(hints.apply('http://remote.test/',{},fp),{});
+ let headers=hints.apply('https://one.test/',{},fp);assert.equal(headers['sec-ch-ua-platform'],'"macOS"');assert.ok(!headers['sec-ch-ua-arch']);
+ hints.receive('https://one.test/',{'Accept-CH':['Sec-CH-UA-Arch, Sec-CH-UA-Full-Version-List']});headers=hints.apply('https://one.test/path',{},fp);assert.ok(headers['sec-ch-ua-arch']);assert.match(headers['sec-ch-ua-full-version-list'],/152\.0\.7977\.130/);assert.ok(!hints.apply('https://two.test/',{},fp)['sec-ch-ua-arch']);
+ hints.receive('https://one.test/',{'accept-ch':['']});assert.ok(!hints.apply('https://one.test/',{},fp)['sec-ch-ua-arch']);
+});
+
+test('批量检测逐条进度、受限并发与按输入顺序返回',async()=>{
+ const {ProxyBatchRunner}=require('../src/main/proxy-batch');let active=0,max=0;const progress=[];
+ const batch=new ProxyBatchRunner(async raw=>{active++;max=Math.max(max,active);await new Promise(resolve=>setTimeout(resolve,raw==='first'?25:2));active--;return {raw,ok:true};},{concurrency:2});
+ const response=await batch.run(1,['first','second','third'],'ordered',event=>progress.push(event));
+ assert.equal(max,2);assert.deepEqual(response.results.map(row=>row.raw),['first','second','third']);assert.equal(response.completed,3);assert.equal(progress.filter(row=>row.result).length,3);assert.equal(progress.at(-1).done,true);assert.equal(batch.jobs.size,0);
+});
+
+test('取消只作用于发起窗口与当前请求，保留已完成结果并停止排队',async()=>{
+ const {ProxyBatchRunner}=require('../src/main/proxy-batch');const issued=[];let release;
+ const batch=new ProxyBatchRunner(async raw=>{issued.push(raw);if(raw==='slow')await new Promise(resolve=>release=resolve);return {raw,ok:true};},{concurrency:1});
+ const job=batch.run(7,['slow','queued'],'owner');await assert.rejects(batch.run(7,['other'],'another'),/已有检测/);
+ assert.equal(batch.cancel(8,'owner').ok,false);assert.equal(batch.cancel(7,'previous').ok,false);assert.equal(batch.cancel(7,'owner').ok,true);release();
+ const result=await job;assert.equal(result.cancelled,true);assert.deepEqual(issued,['slow']);assert.equal(result.completed,1);assert.equal(batch.jobs.size,0);
+});
+
+test('检测输入受限，窗口关闭停止后续工作，失败不会中断其他条目',async()=>{
+ const {ProxyBatchRunner}=require('../src/main/proxy-batch');const runner=new ProxyBatchRunner(async raw=>{if(raw==='bad')throw new Error('实际失败');return {raw,ok:true};},{concurrency:1});
+ for(const input of [[],new Array(501).fill('a'),[''],[{}],['x'.repeat(2049)]])await assert.rejects(runner.run(2,input,'input'));
+ const result=await runner.run(2,['bad','good'],'recovery');assert.equal(result.results[0].error,'实际失败');assert.equal(result.results[1].ok,true);
+ let release;const closed=new ProxyBatchRunner(async raw=>{await new Promise(resolve=>release=resolve);return {raw,ok:true};},{concurrency:1});const job=closed.run(3,['one','two'],'close');closed.close(3);release();assert.equal((await job).completed,1);
+});
+
+test('网页诊断呈现默认区域语言差异与可执行建议',()=>{
+ const {report}=require('../src/main/fingerprint-audit');const fp=generateFingerprint('locale-report',{language:'ja-JP',timezone:'Asia/Tokyo'});
+ const observed={page:{ua:fp.userAgent,platform:fp.platform,language:fp.language,languages:fp.languages,locale:'zh-CN',numberLocale:'ja-JP',cpu:fp.hardwareConcurrency,memory:fp.deviceMemory,tz:fp.timezone,screen:fp.screen.width+' × '+fp.screen.height,dpr:fp.devicePixelRatio,screenMedia:true,dprMedia:true,gpu:'native'},worker:{error:'后台读取受限'},webgpu:{available:false}};
+ const result=report(fp,observed,{engine:'test',url:'https://example.test/'});assert.equal(result.differences,1);assert.ok(result.advice.some(row=>row.title==='语言读数不一致'));assert.equal(result.rows.find(row=>row.label==='默认日期语言').actual,'zh-CN');
 });

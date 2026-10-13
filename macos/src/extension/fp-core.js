@@ -56,7 +56,7 @@
 
   function installFingerprint(CFG) {
     if (!CFG || (typeof window!=="undefined"&&window.__FP_ACTIVE__)) return;
-    CFG.noise = Object.assign({canvas:true,audio:true,webgl:true,clientRects:false},CFG.noise||{});
+    CFG.noise = Object.assign({canvas:false,audio:false,webgl:false,clientRects:false},CFG.noise||{});
 
     // ---------------- navigator 基础 ----------------
     try {
@@ -69,6 +69,8 @@
       def(Navigator.prototype, "deviceMemory", function () {
         return CFG.deviceMemory;
       });
+      // CDP owns UA, language and Client Hints, including native API validation.
+      if (!CFG.protocolManaged) {
       def(Navigator.prototype, "platform", function () {
         return CFG.platform;
       });
@@ -81,6 +83,7 @@
       def(Navigator.prototype, "userAgent", function () {
         return CFG.userAgent;
       });
+      }
       def(Navigator.prototype, "vendor", function () {
         return "Google Inc.";
       });
@@ -105,7 +108,7 @@
 
     // userAgentData（Client Hints）
     try {
-      if (navigator.userAgentData) {
+      if (!CFG.protocolManaged && navigator.userAgentData) {
         var uaDataPrototype = Object.getPrototypeOf(navigator.userAgentData);
         var brands = [
           { brand: "Chromium", version: CFG.chromeVersion.split(".")[0] },

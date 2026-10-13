@@ -26,3 +26,8 @@ Star Browser 0.11.0 本轮通过 27 项单元测试、9 项浏览器设置专项
 指纹处理包含页面 JavaScript 和 CDP 配置；此工程尚不提供内核级反检测保证、远程团队服务、云浏览器或代理购买服务。
 
 安装包采用 ad hoc 签名；公开分发时仍需项目自己的 Apple Developer ID 和公证。
+
+
+0.11.1 已完成 BrowserScan 兼容修复，本机原 macOS 环境由 75% 提升至 100%。默认原生图形音频、真实 Apple Silicon Client Hints 和缩减 UA 的范围及验证见 [0.11.1 交付记录](macos/docs/release-0.11.1.md)。
+
+0.12.0 完成浏览器加载/停止与当前网页 DevTools 修复，工作台侧栏、搜索与详情流程、浅深主题及窄窗优化，新增手动 WebGL 配置和 Windows x64 构建。BrowserLeaks 的 Client Hints 请求头与 JS 已对齐，BrowserScan 本机复测 100%；DNS/IPv6 网络问题与 Windows 尚未真机验收的边界见 [0.12.0 交付记录](macos/docs/release-0.12.0.md)。

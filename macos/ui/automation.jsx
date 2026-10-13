@@ -8,7 +8,7 @@ export function LocalApiSettings(){
  const load=async()=>{try{const next=await window.api.localApiStatus();setStatus(next);setPort(String(next.configuredPort));setError("");}catch(e){setError(messageOf(e));}};
  useEffect(()=>{load();},[]);
  const configure=async(enabled)=>{setBusy(true);try{await execute(async()=>{const next=await window.api.localApiConfigure({enabled,port});setStatus(next);return next;},enabled?"本地 API 已启用":"本地 API 已关闭");}finally{setBusy(false);}};
- return <section><div className="settings-heading"><h2>本地自动化</h2><p>让这台 Mac 上的脚本管理环境与启动浏览器。</p></div>
+ return <section><div className="settings-heading"><h2>本地自动化</h2><p>让这台设备上的脚本管理环境与启动浏览器。</p></div>
   {error?<p className="inline-error" role="alert">{error} <Button onClick={load}>重新加载</Button></p>:!status?<p className="loading-state"><LoaderCircle className="spin" size={16}/>正在读取设置…</p>:<>
    <div className="settings-row"><div><strong>本地自动化 API</strong><p>仅在本机接受持有密钥的请求。</p></div><button className={"switch "+(status.enabled?"on":"")} role="switch" aria-label="本地自动化 API" aria-checked={status.enabled} disabled={busy} onClick={()=>configure(!status.enabled)}><span/></button></div>
    <div className="settings-row"><div><strong>监听端口</strong><p>0 自动选择；固定端口方便脚本重复连接。</p></div><div className="inline-controls"><input className="port-input" aria-label="API 监听端口" inputMode="numeric" value={port} onChange={e=>setPort(e.target.value)} disabled={busy}/><Button disabled={busy||String(status.configuredPort)===port} onClick={()=>configure(status.enabled)}>保存端口</Button></div></div>

@@ -5,13 +5,22 @@ const StarBrowser = (() => {
   const closedTabs = [], media = matchMedia('(prefers-color-scheme: dark)');
   const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
   const buttonIcons = {back:'ArrowLeft',forward:'ArrowRight',reload:'RotateCw',home:'House',bmBtn:'Bookmarks',starBtn:'Star',launchBtn:'LayoutGrid',batchBtn:'Network',gear:'Settings2',closeWin:'X',newTab:'Plus',historyBtn:'History',tabSearchBtn:'ChevronDown',browserMenuBtn:'EllipsisVertical',findPrev:'ChevronUp',findNext:'ChevronDown',findClose:'X',historyClose:'X',tabSearchClose:'X',fatalClose:'X'};
+  let themeFrame = null;
   function theme() {
+    const root = document.documentElement;
+    const next = preferences.theme === 'dark' || (preferences.theme !== 'light' && media.matches) ? 'dark' : 'light';
+    if (root.dataset.theme === next) return;
+    cancelAnimationFrame(themeFrame);
+    root.classList.add('theme-changing');
     document.documentElement.dataset.theme = preferences.theme === 'dark' || (preferences.theme !== 'light' && media.matches) ? 'dark' : 'light';
     document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
+    themeFrame = requestAnimationFrame(() => { themeFrame = requestAnimationFrame(() => root.classList.remove('theme-changing')); });
   }
   media.addEventListener('change', theme);
   function init(payload) {
     preferences = payload.preferences || {}; theme();
+    document.documentElement.dataset.platform=window.api.platform;
+    if(window.api.platform!=="darwin")document.querySelectorAll('[title],kbd').forEach(el=>{if(el.title)el.title=el.title.replaceAll('⌘','Ctrl+');if(el.tagName==='KBD')el.textContent=el.textContent.replaceAll('⌘','Ctrl+').replaceAll('⇧','Shift+');});
     for (const [id,name] of Object.entries(buttonIcons)) { const el=document.getElementById(id); if(el){el.innerHTML=icon(name);el.setAttribute('aria-label',el.title||el.textContent||id);} }
     $('badge').textContent = payload.name || '浏览环境';
     $('badge').title = `环境 ${payload.id}`;
@@ -81,6 +90,7 @@ const StarBrowser = (() => {
     else if(name==='restore-tab')restoreClosed();else if(name==='history')togglePanel('historyPanel');
     else if(name==='zoom-in')zoom(1);else if(name==='zoom-out')zoom(-1);else if(name==='zoom-reset')zoom(0);
     else if(name==='reload'){try{activeTab()?.web.reload();}catch{}}
+    else if(name==='devtools'){const t=activeTab();if(!t?.web||t.ntp){toast('请先打开要调试的网页');return;}window.api.guestDevTools(t.web.getWebContentsId()).catch(error=>toast(error.message));}
     else if(name==='force-reload'){try{activeTab()?.web.reloadIgnoringCache();}catch{}}
     else if(name==='next-tab'||name==='previous-tab'){const index=tabs.findIndex(t=>t.id===activeId);activateTab(tabs[(index+(name==='next-tab'?1:-1)+tabs.length)%tabs.length].id);}
   }
@@ -96,7 +106,7 @@ const StarBrowser = (() => {
     $('findInput').oninput=()=>find();$('findInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();find(!e.shiftKey,true);}else if(e.key==='Escape')closeFind();};
     $('findPrev').onclick=()=>find(false,true);$('findNext').onclick=()=>find(true,true);$('findClose').onclick=closeFind;
     $('fatalRetry').onclick=()=>{hideFatal();const t=activeTab();if(t?.web&&!t.web.__starReady){setupGuestInjection(t.web,t.id);}else try{t?.web.reload();}catch{}};$('fatalClose').onclick=hideFatal;
-    document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(mod&&['f','l','y','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu'])$(id).hidden=true;}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
+    document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(e.key==='F12'||((e.code==='KeyI'||k==='i')&&((e.metaKey&&e.altKey)||(e.ctrlKey&&e.shiftKey)))){e.preventDefault();command('devtools');return;}if(mod&&['f','l','y','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu'])$(id).hidden=true;}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
     document.addEventListener('pointerdown',e=>{for(const [id,trigger] of [['browserMenu','browserMenuBtn'],['tabSearchPanel','tabSearchBtn'],['historyPanel','historyBtn']])if(!$(id).hidden&&!$(id).contains(e.target)&&!$(trigger).contains(e.target))$(id).hidden=true;});
     window.addEventListener('beforeunload',()=>{if(profile)window.api.saveSessionNow(profile.id,snapshot(),tabs.findIndex(t=>t.id===activeId));});
     const syncBanner=document.createElement('div');syncBanner.className='browser-sync-banner';syncBanner.hidden=true;syncBanner.setAttribute('role','status');document.getElementById('toolbar').insertAdjacentElement('afterend',syncBanner);

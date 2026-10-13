@@ -18,10 +18,10 @@ async function configureTarget(rawSend,fp,type,pageSource){
 }
 async function bindElectronTargets(wc,fp,pageSource){
  if(wc.__starTargetsBound)return;wc.__starTargetsBound=true;const debuggerApi=wc.debugger;wc.__starTargetErrors=[];
- debuggerApi.on('message',(_event,method,params)=>{
+ wc.__starTargetHandler=(_event,method,params)=>{
   if(method!=='Target.attachedToTarget')return;
   const {sessionId,targetInfo}=params;configureTarget((method,params)=>debuggerApi.sendCommand(method,params,sessionId),fp,targetInfo.type,pageSource).catch(error=>{wc.__starTargetErrors.push({type:targetInfo.type,error:error.message});wc.__starTargetErrors=wc.__starTargetErrors.slice(-20);});
- });
+ };debuggerApi.on('message',wc.__starTargetHandler);
  try{await debuggerApi.sendCommand('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:[{type:'worker'},{type:'iframe'},{exclude:true}]});}catch(error){wc.__starTargetsBound=false;throw error;}
 }
 module.exports={workerSource,configureTarget,bindElectronTargets,FILTER};

@@ -15,7 +15,9 @@ const { applyProtocol } = require("./fingerprint-protocol");
 const versionCache = new Map();
 function chromeVersion(chrome) {
  const stamp=fs.statSync(chrome).mtimeMs;const cached=versionCache.get(chrome);if(cached?.stamp===stamp)return cached.version;
- const output=execFileSync(chrome,["--version"],{encoding:"utf8",timeout:5000});const version=output.match(/\b(\d+\.\d+\.\d+\.\d+)\b/)?.[1];if(!version)throw new Error("无法读取本机 Chrome 内核版本");versionCache.set(chrome,{stamp,version});return version;
+ const output=process.platform==='win32'
+   ?execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command','(Get-Item -LiteralPath $env:STAR_BROWSER_VERSION_PATH).VersionInfo.ProductVersion'],{encoding:'utf8',timeout:5000,windowsHide:true,env:{...process.env,STAR_BROWSER_VERSION_PATH:chrome}})
+   :execFileSync(chrome,["--version"],{encoding:"utf8",timeout:5000});const version=output.match(/\b(\d+\.\d+\.\d+\.\d+)\b/)?.[1];if(!version)throw new Error("无法读取本机 Chrome 内核版本");versionCache.set(chrome,{stamp,version});return version;
 }
 const { generateFingerprint } = require("./fingerprint");
 const { getGateway, needsGateway } = require("./local-proxy");
@@ -92,7 +94,7 @@ async function launchProfile(profile, paths, fingerprint) {
   const chrome = findChrome();
   if (!chrome) {
     throw new Error(
-      "未找到本地 Chrome/Edge，请先安装（Pro 正式版会内置 Chromium 内核）",
+      "未找到本机 Chrome/Edge。可使用环境列表中的“启动”打开内置浏览器。",
     );
   }
   const version = chromeVersion(chrome);

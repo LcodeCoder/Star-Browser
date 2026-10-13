@@ -38,6 +38,11 @@ function validateProfile(input = {}, creating = false) {
       }
     }
     if(fp.noise!==undefined){out.fingerprint.noise={};for(const key of ['canvas','audio','webgl','clientRects']){if(fp.noise[key]!==undefined){if(typeof fp.noise[key]!=='boolean')throw new Error('指纹策略需选择开启或关闭');out.fingerprint.noise[key]=fp.noise[key];}}}
+    if(fp.webgl?.vendor || fp.webgl?.renderer){
+      const vendor=text(fp.webgl.vendor,240),renderer=text(fp.webgl.renderer,500);
+      if(!vendor||!renderer)throw new Error('请同时填写 WebGL 厂商与渲染器');
+      out.fingerprint.webgl={vendor,renderer};
+    }
     if (fp.screen?.width || fp.screen?.height) {
       const width = Number(fp.screen.width), height = Number(fp.screen.height);
       if (!Number.isInteger(width) || !Number.isInteger(height) || width<320 || width>7680 || height<320 || height>4320) throw new Error('屏幕尺寸无效');

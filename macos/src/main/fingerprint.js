@@ -45,7 +45,7 @@ const WIN_UA = (v) =>
 const MAC_UA = (v) =>
   `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${v} Safari/537.36`;
 const ANDROID_UA = (v) =>
-  `Mozilla/5.0 (Linux; Android 13; SM-S918B Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${v} Mobile Safari/537.36`;
+  `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${v} Mobile Safari/537.36`;
 
 // 安卓常见物理分辨率（px），配合 devicePixelRatio 模拟手机屏
 const ANDROID_RESOLUTIONS = [
@@ -441,9 +441,10 @@ const VOICES = {
  */
 function generateFingerprint(seed, opts = {}) {
   const rng = makeRng(seed);
-  const os = opts.os || pick(rng, ["win", "win", "win", "mac"]); // 外贸多用 Windows
+  const os = opts.os || (process.platform === "win32" ? "win" : "mac");
   const country = opts.country || pick(rng, Object.keys(TIMEZONES));
   const chromeVer = opts.chromeVersion || process.versions.chrome || pick(rng, CHROME_VERSIONS);
+  const uaVersion = chromeVer.split('.')[0] + '.0.0.0';
   const locale = opts.language || LOCALES[country] || "en-US";
 
   let userAgent,
@@ -455,7 +456,7 @@ function generateFingerprint(seed, opts = {}) {
     memory,
     gpu;
   if (os === "android") {
-    userAgent = ANDROID_UA(chromeVer);
+    userAgent = ANDROID_UA(uaVersion);
     platform = "Linux armv8l";
     const [aw, ah] = pick(rng, ANDROID_RESOLUTIONS);
     screen = {
@@ -472,7 +473,7 @@ function generateFingerprint(seed, opts = {}) {
     memory = pick(rng, [4, 8]);
     gpu = pick(rng, ANDROID_GPU);
   } else {
-    userAgent = os === "mac" ? MAC_UA(chromeVer) : WIN_UA(chromeVer);
+    userAgent = os === "mac" ? MAC_UA(uaVersion) : WIN_UA(uaVersion);
     platform = os === "mac" ? "MacIntel" : "Win32";
     const [w, h] = pick(rng, RESOLUTIONS);
     screen = {
@@ -539,10 +540,13 @@ function generateFingerprint(seed, opts = {}) {
     plugins: [],
   };
   Object.assign(result, opts.fingerprint || {});
-  result.noise = Object.assign({canvas:true,audio:true,webgl:true,clientRects:false},opts.fingerprint?.noise||{});
+  // Persisted previews must never pin an old engine version or User-Agent.
+  result.chromeVersion = chromeVer;
+  result.userAgent = userAgent;
+  result.noise = Object.assign({canvas:false,audio:false,webgl:false,clientRects:false},opts.fingerprint?.noise||{});
   result.protocolManaged = true;
   for(const key of ['audioSampleRate','fonts','mediaDevices','speechVoices','plugins'])delete result[key];
-  result.nativeSignals=['fonts','mediaDevices','speechVoices','plugins','audioSampleRate','webgpu','sharedWorker','serviceWorker','tls','dns'];
+  result.nativeSignals=Object.keys(result.noise).filter(key=>!result.noise[key]).concat(['fonts','mediaDevices','speechVoices','plugins','audioSampleRate','webgpu','sharedWorker','serviceWorker','tls','dns']);
   return result;
 }
 

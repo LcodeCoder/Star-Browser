@@ -221,7 +221,7 @@ async function createProfile(name,proxy=null){
       }
       fs.writeFileSync(path.join(output,'chrome-diagnostic.json'),JSON.stringify(diagnostic,null,2));throw error;
     }
-    assert.equal(early.platform,'MacIntel');assert.equal(early.language,'ja-JP');assert.equal(early.tz,'Asia/Tokyo');assert.equal(early.ua,launched.ua);const runtime=await send('Browser.getVersion');assert.ok(early.ua.includes(runtime.product.replace(/^Chrome\//,'')));
+    assert.equal(early.platform,'MacIntel');assert.equal(early.language,'ja-JP');assert.equal(early.tz,'Asia/Tokyo');assert.equal(early.ua,launched.ua);const runtime=await send('Browser.getVersion');assert.ok(early.ua.includes('Chrome/'+runtime.product.replace(/^Chrome\//,'').split('.')[0]+'.0.0.0'));
     const response=await send('Runtime.evaluate',{expression:"fetch('/status').then(async r=>({status:r.status,body:await r.text()}))",returnByValue:true,awaitPromise:true},sessionId);
     assert.deepEqual(response.result.value,{status:201,body:'first:second'});
     if(name==='独立 Chrome'){

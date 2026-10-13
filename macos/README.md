@@ -22,3 +22,8 @@ npm run test:package
 0.11.0 完善内置浏览器环境设置：准确回填、代理检测预览、明确保存、失败可重试、任务保护、配置立即作用于新网页首脚本、浅深主题与键盘返回。原有任务定义复用、Chrome 多网页检查、标签和存储能力保留。20 次双环境休眠/唤醒验证没有累积 guest 数量；具体范围、测试证据和安装包见 docs/release-0.11.0.md。
 
 专项验证使用 `npm run test:browser-settings` 和 `node tests/tab-lifecycle.cjs`。
+
+
+0.11.1 修复 BrowserScan 暴露的图形、音频及 UA/Client Hints 不一致。本机 Apple M4 原环境实测由 75% 提升到 100%；默认采用原生图形音频值，保留显式稳定覆盖选项。修复范围与回归证据见 docs/release-0.11.1.md。
+
+0.12.0 产物、手动配置入口、BrowserLeaks 实测和已知边界见 [交付记录](docs/release-0.12.0.md)。运行 `npm run test:workbench-browser` 验证搜索、详情、加载、HTTP Client Hints、DevTools、离线和配置保存。`npm run build:win` 生成 Windows x64 NSIS/ZIP，`npm run build:win:arm64` 为 ARM64 构建入口；本轮仅 x64 已交叉构建，Windows 真机测试待完成。
