@@ -82,7 +82,8 @@ async function writeArchive(destination, password, manifest, files, onProgress =
     await fsp.writeFile(temporary,header,{mode:0o600,flag:'wx'});
     await pipeline(Readable.from(records(),{objectMode:false}),zlib.createGzip({level:3}),cipher,fs.createWriteStream(temporary,{flags:'a',mode:0o600}));
     await fsp.appendFile(temporary,cipher.getAuthTag());
-    const handle = await fsp.open(temporary,'r');try { await handle.sync(); } finally { await handle.close(); }
+    // Windows FlushFileBuffers requires write access; keep the archive intact.
+    const handle = await fsp.open(temporary,'r+');try { await handle.sync(); } finally { await handle.close(); }
     await fsp.rename(temporary,destination);
     return {bytes:(await fsp.stat(destination)).size,files:files.length};
   } catch(error) { await fsp.rm(temporary,{force:true});throw error; }

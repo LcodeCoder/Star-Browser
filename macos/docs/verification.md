@@ -201,3 +201,10 @@ Windows x64 NSIS/ZIP 交叉构建成功；验证 PE 架构、asar 版本与主�
 - BrowserLeaks 六页实际加载；WebRTC 显示 No Leak，Client Hints 的网页与 HTTP 读数一致。原生 GPU 与 TLS 读数保留，未声称内核级隐藏。
 
 证据保存于本机忽略目录 test-results/star-0.13.0/external-after-session-fix/。该目录只包含修复后的复测，不能用于重构修复前的完整报告。
+
+
+## Windows 备份兼容修复
+
+2026-10-12（America/Los_Angeles）：远程工作流 38356480776 的 macOS 单元、工作台和体验检查通过；Windows 单元测试在真实 runner 发现备份临时文件 fsync 返回 EPERM。原因是 Windows FlushFileBuffers 要求可写文件句柄。同步前以 r+ 打开现有文件，保留已写入的归档内容，不吞掉落盘错误。
+
+修复后本机两项备份专项通过，验证大文件往返、认证、错误密码、篡改清理、已有目录保护与路径限制；Windows 的实际复验由下一次推送触发，不提前记为通过。
