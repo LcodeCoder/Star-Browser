@@ -1,0 +1,51 @@
+[
+  {
+    "id": "browserscan",
+    "name": "BrowserScan",
+    "group": "综合",
+    "description": "出口、地域、语言与浏览器综合检查",
+    "url": "https://www.browserscan.net/zh"
+  },
+  {
+    "id": "javascript",
+    "name": "JavaScript",
+    "group": "浏览器",
+    "description": "语言、时区、屏幕与浏览器属性",
+    "url": "https://browserleaks.com/javascript"
+  },
+  {
+    "id": "client-hints",
+    "name": "Client Hints",
+    "group": "浏览器",
+    "description": "网页与请求头中的内核和系统信息",
+    "url": "https://browserleaks.com/client-hints"
+  },
+  {
+    "id": "webrtc",
+    "name": "WebRTC",
+    "group": "网络",
+    "description": "实时连接是否暴露网络地址",
+    "url": "https://browserleaks.com/webrtc"
+  },
+  {
+    "id": "canvas",
+    "name": "Canvas",
+    "group": "图形",
+    "description": "图像绘制的读数与稳定性",
+    "url": "https://browserleaks.com/canvas"
+  },
+  {
+    "id": "webgl",
+    "name": "WebGL",
+    "group": "图形",
+    "description": "图形设备、渲染器与绘制能力",
+    "url": "https://browserleaks.com/webgl"
+  },
+  {
+    "id": "tls",
+    "name": "TLS",
+    "group": "网络",
+    "description": "加密连接与协议的实际特征",
+    "url": "https://browserleaks.com/tls"
+  }
+]

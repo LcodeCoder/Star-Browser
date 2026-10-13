@@ -5,6 +5,9 @@ on:
     paths: ['macos/**', '.github/workflows/desktop.yml']
   pull_request:
     paths: ['macos/**', '.github/workflows/desktop.yml']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   desktop:
     strategy:
@@ -27,6 +30,7 @@ jobs:
       - run: npm test
       - run: npm run test:workbench-browser
       - run: npm run test:experience
+      - run: npm run test:diagnostics
       - name: Build Windows installer
         if: runner.os == 'Windows'
         run: npm run build:win

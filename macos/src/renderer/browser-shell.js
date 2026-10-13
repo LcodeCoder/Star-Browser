@@ -1668,6 +1668,7 @@ if (window.api) {
       if(saved.length){saved.forEach(t=>createTab(t.url,{...t,ntp:t.url==='about:home',background:true}));activateTab(tabs[Math.min(payload.savedActive||0,tabs.length-1)].id);}
       else createTab(payload.startUrl || homeUrl);
       StarBrowser.endRestore();
+      for(const url of payload.diagnosticUrls||[]) createTab(url);
       // 默认同时打开检测站，便于一眼确认 IP 环境是否正常（参考 AdsPower：开环境即带检测页）
       try {
         if (payload.openCheckPage !== false) createTab("https://ipchacha.cn");

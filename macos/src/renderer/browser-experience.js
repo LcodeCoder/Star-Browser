@@ -4,7 +4,7 @@ const StarBrowser = (() => {
   let preferences = {}, saveTimer = null, restoring = false, historyRows = [];
   const closedTabs = [], media = matchMedia('(prefers-color-scheme: dark)');
   const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
-  const buttonIcons = {back:'ArrowLeft',forward:'ArrowRight',reload:'RotateCw',home:'House',bmBtn:'Bookmarks',starBtn:'Star',launchBtn:'LayoutGrid',batchBtn:'Network',gear:'Settings2',closeWin:'X',newTab:'Plus',historyBtn:'History',tabSearchBtn:'ChevronDown',browserMenuBtn:'EllipsisVertical',findPrev:'ChevronUp',findNext:'ChevronDown',findClose:'X',historyClose:'X',tabSearchClose:'X',fatalClose:'X'};
+  const buttonIcons = {back:'ArrowLeft',forward:'ArrowRight',reload:'RotateCw',home:'House',bmBtn:'Bookmarks',starBtn:'Star',launchBtn:'LayoutGrid',batchBtn:'Network',gear:'Settings2',closeWin:'X',newTab:'Plus',historyBtn:'History',tabSearchBtn:'ChevronDown',browserMenuBtn:'EllipsisVertical',findPrev:'ChevronUp',findNext:'ChevronDown',findClose:'X',historyClose:'X',tabSearchClose:'X',diagnosticClose:'X',fatalClose:'X'};
   let themeFrame = null;
   function theme() {
     const root = document.documentElement;
@@ -72,7 +72,32 @@ const StarBrowser = (() => {
   function zoom(direction) {const t=activeTab();if(!t)return;try{const current=t.web.getZoomFactor();const factor=direction===0?1:Math.max(.25,Math.min(3,Math.round((current+direction*.1)*100)/100));t.web.setZoomFactor(factor);$('zoomValue').textContent=`${Math.round(factor*100)}%`;}catch{}}
   function syncActive() {try{const t=activeTab();if(profile&&t){const bounds=t.web.getBoundingClientRect();window.api.syncActive(profile.id,t.web.getWebContentsId(),{width:bounds.width,height:bounds.height}).catch(()=>{});}}catch{}}
   function tabChanged() {syncActive();closeFind();persist();try{$('zoomValue').textContent=`${Math.round(activeTab().web.getZoomFactor()*100)}%`;}catch{}}
-  function togglePanel(id) {const el=$(id),opening=el.hidden;for(const other of ['historyPanel','tabSearchPanel','browserMenu'])$(other).hidden=true;el.hidden=!opening;if(opening&&id==='historyPanel')loadHistory();if(opening&&id==='tabSearchPanel'){renderTabSearch();$('tabSearchInput').focus();}}
+  function togglePanel(id) {const el=$(id),opening=el.hidden;for(const other of ['historyPanel','tabSearchPanel','browserMenu','diagnosticPanel'])$(other).hidden=true;el.hidden=!opening;if(opening&&id==='historyPanel')loadHistory();if(opening&&id==='tabSearchPanel'){renderTabSearch();$('tabSearchInput').focus();}if(opening&&id==='diagnosticPanel'){loadDiagnostics();$('diagnosticSearch').focus();}}
+  let diagnosticRows=null,diagnosticError='',diagnosticBusy=false;
+  function closeDiagnostics(restoreFocus=true){$('diagnosticPanel').hidden=true;if(restoreFocus)$('browserMenuBtn').focus();}
+  async function loadDiagnostics(){
+    if(diagnosticRows){renderDiagnostics();return;}
+    $('diagnosticList').textContent='正在读取检测项目…';
+    try{diagnosticRows=await window.api.diagnosticCatalog();diagnosticError='';}catch(error){diagnosticError=error.message;}
+    renderDiagnostics();
+  }
+  function renderDiagnostics(){
+    const box=$('diagnosticList'),query=$('diagnosticSearch').value.trim().toLowerCase();box.replaceChildren();
+    const offline=!navigator.onLine;$('diagnosticOffline').hidden=!offline;
+    if(diagnosticError){const message=document.createElement('p');message.className='diagnostic-error';message.setAttribute('role','alert');message.textContent=diagnosticError;const retry=document.createElement('button');retry.className='btn';retry.textContent='重试';retry.onclick=()=>{diagnosticRows=null;loadDiagnostics();};box.append(message,retry);return;}
+    if(!diagnosticRows)return;
+    const matches=diagnosticRows.filter(row=>(row.name+' '+row.description+' '+row.group+' '+row.url).toLowerCase().includes(query));
+    if(!matches.length){const message=document.createElement('p');message.className='diagnostic-empty';message.textContent='没有匹配的检测项目';const clear=document.createElement('button');clear.className='btn';clear.textContent='清除搜索';clear.onclick=()=>{$('diagnosticSearch').value='';renderDiagnostics();$('diagnosticSearch').focus();};box.append(message,clear);return;}
+    for(const group of ['综合','浏览器','网络','图形']){
+      const rows=matches.filter(row=>row.group===group);if(!rows.length)continue;
+      const title=document.createElement('h3');title.className='diagnostic-group';title.textContent=group;box.append(title);
+      for(const row of rows){
+        const button=document.createElement('button');button.className='diagnostic-item';button.disabled=offline||diagnosticBusy;button.setAttribute('aria-label',row.name);
+        const content=document.createElement('span'),name=document.createElement('strong'),description=document.createElement('span');name.textContent=row.name;description.textContent=row.description;description.id='diagnostic-description-'+row.id;button.setAttribute('aria-describedby',description.id);content.append(name,description);button.append(content);button.insertAdjacentHTML('beforeend',icon('ArrowUpRight'));
+        button.onclick=async()=>{diagnosticBusy=true;renderDiagnostics();try{await window.api.diagnosticOpen(profile.id,row.id);closeDiagnostics(false);}catch(error){diagnosticError=error.message;}finally{diagnosticBusy=false;renderDiagnostics();}};box.append(button);
+      }
+    }
+  }
   async function loadHistory() {try{historyRows=await window.api.historyList(profile.id);renderHistory();}catch(error){$('historyList').textContent=error.message;}}
   function renderHistory() {
     const q=$('historySearch').value.trim().toLowerCase(),box=$('historyList');box.replaceChildren();
@@ -87,7 +112,7 @@ const StarBrowser = (() => {
   }
   function command(name) {
     if(name==='find')openFind();else if(name==='address'){addr.focus();addr.select();}
-    else if(name==='restore-tab')restoreClosed();else if(name==='history')togglePanel('historyPanel');
+    else if(name==='diagnostics')togglePanel('diagnosticPanel');else if(name==='restore-tab')restoreClosed();else if(name==='history')togglePanel('historyPanel');
     else if(name==='zoom-in')zoom(1);else if(name==='zoom-out')zoom(-1);else if(name==='zoom-reset')zoom(0);
     else if(name==='reload'){try{activeTab()?.web.reload();}catch{}}
     else if(name==='devtools'){const t=activeTab();if(!t?.web||t.ntp){toast('请先打开要调试的网页');return;}window.api.guestDevTools(t.web.getWebContentsId()).catch(error=>toast(error.message));}
@@ -100,14 +125,17 @@ const StarBrowser = (() => {
     $('historySearch').oninput=renderHistory;$('historyClear').onclick=async()=>{try{if(await window.api.historyClear(profile.id))loadHistory();}catch(error){toast(error.message);}};
     $('tabSearchBtn').onclick=()=>togglePanel('tabSearchPanel');$('tabSearchClose').onclick=()=>$('tabSearchPanel').hidden=true;$('tabSearchInput').oninput=renderTabSearch;
     $('browserMenuBtn').onclick=()=>togglePanel('browserMenu');
+    $('diagnosticClose').onclick=()=>closeDiagnostics();$('diagnosticSearch').oninput=()=>{diagnosticError='';renderDiagnostics();};
+    $('diagnosticPanel').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const controls=[...$('diagnosticPanel').querySelectorAll('input,button:not(:disabled)')].filter(el=>el.getClientRects().length);const index=controls.indexOf(document.activeElement);if(!controls.length)return;event.preventDefault();controls[(index+(event.shiftKey?-1:1)+controls.length)%controls.length].focus();});
+    window.addEventListener('online',renderDiagnostics);window.addEventListener('offline',renderDiagnostics);
     $('browserMenu').addEventListener('click',e=>{const b=e.target.closest('[data-command]');if(b){command(b.dataset.command);if(!b.dataset.command.startsWith('zoom'))$('browserMenu').hidden=true;}});
     $('openDownloads').onclick=()=>window.api.openWorkbench('downloads');$('openWorkspace').onclick=()=>window.api.openWorkbench('environments');
     $('themeToggle').onclick=async()=>{preferences.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';theme();await window.api.preferences({theme:preferences.theme});};
     $('findInput').oninput=()=>find();$('findInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();find(!e.shiftKey,true);}else if(e.key==='Escape')closeFind();};
     $('findPrev').onclick=()=>find(false,true);$('findNext').onclick=()=>find(true,true);$('findClose').onclick=closeFind;
     $('fatalRetry').onclick=()=>{hideFatal();const t=activeTab();if(t?.web&&!t.web.__starReady){setupGuestInjection(t.web,t.id);}else try{t?.web.reload();}catch{}};$('fatalClose').onclick=hideFatal;
-    document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(e.key==='F12'||((e.code==='KeyI'||k==='i')&&((e.metaKey&&e.altKey)||(e.ctrlKey&&e.shiftKey)))){e.preventDefault();command('devtools');return;}if(mod&&['f','l','y','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu'])$(id).hidden=true;}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
-    document.addEventListener('pointerdown',e=>{for(const [id,trigger] of [['browserMenu','browserMenuBtn'],['tabSearchPanel','tabSearchBtn'],['historyPanel','historyBtn']])if(!$(id).hidden&&!$(id).contains(e.target)&&!$(trigger).contains(e.target))$(id).hidden=true;});
+    document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(e.key==='F12'||((e.code==='KeyI'||k==='i')&&((e.metaKey&&e.altKey)||(e.ctrlKey&&e.shiftKey)))){e.preventDefault();command('devtools');return;}if(mod&&['f','l','y','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){const diagnosticOpen=!$('diagnosticPanel').hidden;closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu','diagnosticPanel'])$(id).hidden=true;if(diagnosticOpen)$('browserMenuBtn').focus();}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
+    document.addEventListener('pointerdown',e=>{for(const [id,trigger] of [['browserMenu','browserMenuBtn'],['tabSearchPanel','tabSearchBtn'],['historyPanel','historyBtn'],['diagnosticPanel','browserMenuBtn']])if(!$(id).hidden&&!$(id).contains(e.target)&&!$(trigger).contains(e.target))$(id).hidden=true;});
     window.addEventListener('beforeunload',()=>{if(profile)window.api.saveSessionNow(profile.id,snapshot(),tabs.findIndex(t=>t.id===activeId));});
     const syncBanner=document.createElement('div');syncBanner.className='browser-sync-banner';syncBanner.hidden=true;syncBanner.setAttribute('role','status');document.getElementById('toolbar').insertAdjacentElement('afterend',syncBanner);
     const syncState=status=>{const included=profile&&[status.master,...status.followers].includes(profile.id);syncBanner.hidden=!status.active||!included;if(!included)return;syncBanner.replaceChildren();const label=document.createElement('span');label.textContent=status.paused?'窗口同步已暂停':status.master===profile.id?'主控窗口 · 操作将同步到 '+status.followers.length+' 个环境':'跟随窗口 · 接收主控页面操作';syncBanner.append(label);const pause=document.createElement('button');pause.textContent=status.paused?'继续':'暂停';pause.onclick=()=>window.api.syncPause(!status.paused);const stop=document.createElement('button');stop.textContent='停止同步';stop.onclick=()=>window.api.syncStop();syncBanner.append(pause,stop);syncActive();};

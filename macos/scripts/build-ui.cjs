@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const React = require('react');
 const {renderToStaticMarkup} = require('react-dom/server');
 const icons = require('lucide-react');
-const names=['ArrowLeft','ArrowRight','RotateCw','House','Bookmarks','Star','LayoutGrid','Network','Settings2','X','Plus','History','ChevronDown','ChevronUp','EllipsisVertical','Moon','VolumeX'];
+const names=['ArrowLeft','ArrowRight','RotateCw','House','Bookmarks','Star','LayoutGrid','Network','Settings2','X','Plus','History','ChevronDown','ChevronUp','EllipsisVertical','Moon','VolumeX','ArrowUpRight'];
 const assets=path.join(__dirname,'../src/renderer/assets');fs.mkdirSync(assets,{recursive:true});
 const sprite=names.map(name=>{const svg=renderToStaticMarkup(React.createElement(icons[name]||icons.Bookmark));return `<symbol id="${name}" viewBox="0 0 24 24">${svg.replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'')}</symbol>`;}).join('');
 fs.writeFileSync(path.join(assets,'icons.svg'),`<!-- Icons: Lucide, ISC License; see THIRD_PARTY_NOTICES.md -->\n<svg xmlns="http://www.w3.org/2000/svg">${sprite}</svg>\n`);

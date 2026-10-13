@@ -120,6 +120,8 @@ contextBridge.exposeInMainWorld("api", {
   onPreferences: cb => subscribe("star:preferencesChanged", cb),
   onNavigate: cb => subscribe("star:navigate", cb),
   onWorkspaceChanged: cb => subscribe("star:invalidate", cb),
+  diagnosticCatalog: () => ipcRenderer.invoke('star:diagnosticCatalog'),
+  diagnosticOpen: (id, checkId) => ipcRenderer.invoke('star:diagnosticOpen',id,checkId),
   openWorkbench: page => ipcRenderer.invoke("star:openWorkbench", page),
   historyRecord: (id,url,title) => ipcRenderer.invoke("star:historyRecord",id,url,title),
   historyList: id => ipcRenderer.invoke("star:historyList",id),

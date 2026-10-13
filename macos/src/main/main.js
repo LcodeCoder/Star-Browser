@@ -1119,7 +1119,7 @@ function registerIpc() {
   // 浏览窗口就绪 -> 下发指纹配置
   ipcMain.on("browse:ready", (e) => {
     const w = BrowserWindow.fromWebContents(e.sender);
-    if (w && w._init) w.webContents.send("browse:init", w._init);
+    if (w && w._init) { w._starBrowseReady=true; w.webContents.send("browse:init", w._init); }
   });
 
   // 浏览窗口保存设置（Lite / Pro 应用内打开共用）：持久化 + 重生成指纹，返回新配置

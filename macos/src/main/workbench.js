@@ -56,6 +56,30 @@ function registerWorkbench(store,{commands,starting}={}) {
   ipcMain.handle('star:syncPause',(e,value)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile&&!([synchronizer.status().master,...synchronizer.status().followers].includes(w._profile.id)))throw new Error('此环境未参与同步');return synchronizer.pause(value);});
   ipcMain.handle('star:syncStop',()=>synchronizer.stop());
   ipcMain.handle('star:syncTile',e=>{managerOnly(e);return synchronizer.tile();});
+  const diagnosticCatalog=require('../resources/diagnostics.json');
+  ipcMain.handle('star:diagnosticCatalog',()=>diagnosticCatalog);
+  ipcMain.handle('star:diagnosticOpen',async(e,id,checkId)=>{
+    const caller=BrowserWindow.fromWebContents(e.sender);
+    if(caller?._profile){if(caller._profile.id!==id||!e.senderFrame?.url.startsWith('file:'))throw new Error('只能检测当前环境');}
+    else managerOnly(e);
+    const selected=diagnosticCatalog.find(item=>item.id===checkId);
+    if(!selected)throw new Error('检测项目不存在，请重新选择');
+    const profile=store.get(id);if(!profile)throw new Error('环境不存在');
+    if(profile.archived)throw new Error('请先恢复归档环境');
+    require('./profile-backups').assertProfileUnlocked(id);
+    let window=BrowserWindow.getAllWindows().find(w=>!w.isDestroyed()&&!w._starClosing&&w._profile?.id===id);
+    const chrome=getLaunchedBrowser(id);
+    if(!window&&chrome&&!chrome.pipe.closed){
+      const {targetId}=await chrome.pipe.send('Target.createTarget',{url:selected.url});
+      await chrome.pipe.send('Target.activateTarget',{targetId});
+      return {ok:true,engine:'chrome',name:selected.name};
+    }
+    if(!window){await commands('browse',[id]);window=BrowserWindow.getAllWindows().find(w=>!w.isDestroyed()&&!w._starClosing&&w._profile?.id===id);}
+    if(!window)throw new Error('浏览器尚未就绪，请重试');
+    if(window._starBrowseReady)window.webContents.send('browse:newtab',selected.url);
+    else window._init.diagnosticUrls=[...(window._init.diagnosticUrls||[]),selected.url];
+    window.show();window.focus();return {ok:true,engine:'electron',name:selected.name};
+  });
   ipcMain.handle('star:fingerprintPages',async(e,id)=>{managerOnly(e);const current=synchronizer.activeGuest(id);if(current)return {engine:'electron',pages:[]};const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return {engine:'chrome',pages:await require('./fingerprint-audit').chromePages(chrome)};throw new Error('请先启动这个环境并打开网页');});
   ipcMain.handle('star:fingerprintAudit',async(e,id,targetId)=>{managerOnly(e);const current=synchronizer.activeGuest(id);if(current){if(targetId)throw new Error('浏览器已切换，请刷新后重新检查');return require('./fingerprint-audit').auditElectron(current.wc);}const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return require('./fingerprint-audit').auditChrome(chrome,targetId);throw new Error('请先启动这个环境并打开网页');});
   const tasks=new (require('./automation-tasks').AutomationTasks)({app,store,commands,synchronizer});
