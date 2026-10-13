@@ -4,9 +4,8 @@ const { _electron } = require('playwright');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const output = path.resolve('test-results/star-0.13.0/external');
-const data = fs.mkdtempSync(path.join(os.tmpdir(), 'star-external-'));
-const sites = [
+const requested = process.argv.slice(2);
+const availableSites = [
   ['browserscan', 'https://www.browserscan.net/zh'],
   ['javascript', 'https://browserleaks.com/javascript'],
   ['client-hints', 'https://browserleaks.com/client-hints'],
@@ -15,6 +14,10 @@ const sites = [
   ['webgl', 'https://browserleaks.com/webgl'],
   ['tls', 'https://browserleaks.com/tls'],
 ];
+if (requested.some(name => !availableSites.some(site => site[0] === name))) throw new Error('检测页面名称无效');
+const sites = requested.length ? availableSites.filter(site => requested.includes(site[0])) : availableSites;
+const output = path.resolve('test-results/star-0.13.0/' + (requested.length ? 'external-' + requested.join('-') : 'external'));
+const data = fs.mkdtempSync(path.join(os.tmpdir(), 'star-external-'));
 const report = { testedAt: new Date().toISOString(), host: { platform: process.platform, arch: process.arch }, isolated: true, results: [] };
 let app;
 const readSource = `(() => ({
@@ -38,7 +41,7 @@ async function waitFor(run, timeout = 30000) {
  try {
   const env = { ...process.env, TFB_USER_DATA_DIR: data };
   delete env.TFB_TEST_MODE; delete env.TFB_TEST_ORIGIN_PORT;
-  app = await _electron.launch({ args: ['.'], cwd: process.cwd(), env, timeout: 30000 });
+  app = await _electron.launch({ ...(process.env.STAR_QA_EXECUTABLE ? {executablePath:process.env.STAR_QA_EXECUTABLE,args:[]} : {args:['.']}), cwd: process.cwd(), env, timeout: 30000 });
   const manager = await app.firstWindow(); await manager.locator('#btnNew').waitFor();
   const profile = await manager.evaluate(os => window.api.create({name:'外部检测 · 隔离临时环境',os,country:'US',startUrl:'about:home',webrtc:'disable'}), process.platform === 'win32' ? 'win' : 'mac');
   const next = app.waitForEvent('window'); await manager.evaluate(id => window.api.browse(id), profile.id);

@@ -26,6 +26,8 @@ async function startOrigin() {
   const requests = [];
   const fixture = await listen(http.createServer((req, res) => {
     requests.push({url: req.url, headers: req.headers});
+    // Deliberately unresolved subframe for document-readiness regression.
+    if(req.url.startsWith('/background-frame')) return;
     if(req.url.startsWith('/client-hints')){
       res.writeHead(200,{'Content-Type':'application/json','Accept-CH':'Sec-CH-UA-Arch, Sec-CH-UA-Platform-Version, Sec-CH-UA-Full-Version-List'});res.end(JSON.stringify(req.headers));return;
     }

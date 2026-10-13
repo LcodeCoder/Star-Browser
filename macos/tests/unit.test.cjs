@@ -350,3 +350,14 @@ test('HTTP 语言列表保留完整偏好顺序，单语言不生成重复项',(
  assert.equal(acceptLanguage({language:'en-US'}),'en-US');
  assert.deepEqual(languages({languages:['fr-FR','en-US','fr-FR']}),['fr-FR','en-US']);
 });
+
+
+test('当前文档未完成或检查期间导航时拒绝返回过期报告',async()=>{
+ const {auditElectron}=require('../src/main/fingerprint-audit');
+ const fp=generateFingerprint('audit-readiness',{os:'mac',country:'US'});
+ const wc={__tfbFingerprint:fp,getURL:()=> 'https://example.test/',debugger:{sendCommand:async()=>({result:{value:'loading'}})}};
+ await assert.rejects(auditElectron(wc),/仍在加载/);
+ let reads=0;wc.debugger.sendCommand=async()=> ++reads===1?{result:{value:'complete'}}:{result:{value:{}}};
+ wc.isDestroyed=()=>false;wc.getURL=()=>reads<2?'https://example.test/':'https://another.test/';
+ await assert.rejects(auditElectron(wc),/检查期间跳转/);
+});

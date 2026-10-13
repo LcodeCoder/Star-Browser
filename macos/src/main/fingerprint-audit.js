@@ -18,10 +18,14 @@ function report(fp,observed,{engine,url,zoom=1,targetErrors=[]}){
 }
 async function auditElectron(wc){
  const fp=wc.__tfbFingerprint;if(!fp)throw new Error('这个标签的指纹尚未就绪，请等待加载后重试');
- if(wc.isLoading())throw new Error('页面仍在加载，请完成后再检查');if(!/^https?:/.test(wc.getURL()))throw new Error('打开一个 HTTP 或 HTTPS 网页后再检查');
+ const url=wc.getURL();if(!/^https?:/.test(url))throw new Error('打开一个 HTTP 或 HTTPS 网页后再检查');
+ // An ad frame can keep webContents loading after the inspected document is ready.
+ const state=await wc.debugger.sendCommand('Runtime.evaluate',{expression:'document.readyState',returnByValue:true,timeout:2000});
+ if(state.result?.value!=='complete')throw new Error('页面仍在加载，请完成后再检查');
  const value=await wc.debugger.sendCommand('Runtime.evaluate',{expression:readSource(fp),returnByValue:true,awaitPromise:true,timeout:7000});
  if(value.exceptionDetails||!value.result?.value)throw new Error('网页检查失败，请重新加载后重试');
- return report(fp,value.result.value,{engine:'内置 Chromium '+process.versions.chrome,url:wc.getURL(),zoom:wc.getZoomFactor(),targetErrors:wc.__starTargetErrors});
+ if(wc.isDestroyed()||wc.getURL()!==url)throw new Error('网页在检查期间跳转，请重新检查');
+ return report(fp,value.result.value,{engine:'内置 Chromium '+process.versions.chrome,url,zoom:wc.getZoomFactor(),targetErrors:wc.__starTargetErrors});
 }
 function cleanUrl(url){try{const clean=new URL(url);return clean.origin+clean.pathname;}catch{return '';}}
 async function chromeTargets(running){

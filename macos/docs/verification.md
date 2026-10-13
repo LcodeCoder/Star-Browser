@@ -221,3 +221,10 @@ Windows x64 NSIS/ZIP 交叉构建成功；验证 PE 架构、asar 版本与主�
 - GitHub 工作流 38357743980（46e76c3）两平台成功：macOS / Windows 单元、工作台与体验专项通过，Windows x64 NSIS / ZIP 安装包构建成功。Windows 此处是 GitHub 实际 runner，尚无用户设备上安装验收。
 
 公网证据：test-results/star-0.13.0/external/；指纹：test-results/fingerprint.json。
+
+
+## 已完成文档的检查与后台加载
+
+2026-10-12（America/Los_Angeles）：18 项指纹专项通过（另 2 项背景上下文边界观测），含真实挂起的后台 iframe；40 项单元检查覆盖主文档未完成与检查期间导航拒绝。
+
+内部配置检查以当前文档的 complete 状态判断就绪。后台框架继续加载不再阻止已完成文档的检查；检查期间地址改变会拒绝返回过期报告。BrowserScan 真实复测完成，内部检查 0 差异 / 0 未读取，公开页仍显示 100%。专项证据保存于 test-results/star-0.13.0/external-browserscan/。公网脚本支持选择页面名称与实际打包应用路径，减少无需重复的网络测试。
