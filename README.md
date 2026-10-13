@@ -7,7 +7,7 @@
 <p align="center">独立浏览环境 · 本地代理 · 多环境工作台</p>
 
 <p align="center">
-  <a href="https://github.com/LcodeCoder/Star-Browser/releases/tag/0.14.0">下载 0.14.0</a> ·
+  <a href="https://github.com/LcodeCoder/Star-Browser/releases">版本与下载</a> ·
   <a href="macos/docs/capabilities.md">功能与范围</a> ·
   <a href="macos/docs/release-0.14.0.md">版本说明</a> ·
   <a href="macos/docs/verification.md">验证记录</a>
@@ -21,10 +21,10 @@ Star Browser 是面向日常多环境工作的桌面浏览器，支持 **Windows
 
 | 平台 | 架构 | 安装包 |
 | --- | --- | --- |
-| Windows | x64 | [下载 EXE](https://github.com/LcodeCoder/Star-Browser/releases/download/0.14.0/Star-Browser-0.14.0-win-x64.exe) |
-| macOS | Apple Silicon / arm64 | [下载 DMG](https://github.com/LcodeCoder/Star-Browser/releases/download/0.14.0/Star-Browser-0.14.0-mac-arm64.dmg) |
+| Windows | x64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:win` |
+| macOS | Apple Silicon / arm64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:mac` |
 
-macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。Windows 已完成 GitHub Actions 构建与回归检查，用户设备上的安装与运行验收仍需实际验证。
+macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本轮已完成 Mac arm64 打包应用烟测和 Windows x64 交叉构建检查；Windows 用户设备上的安装与运行验收仍需实际验证。
 
 ## 功能
 
