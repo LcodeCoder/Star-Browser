@@ -315,3 +315,30 @@ test('网页诊断呈现默认区域语言差异与可执行建议',()=>{
  const observed={page:{ua:fp.userAgent,platform:fp.platform,language:fp.language,languages:fp.languages,locale:'zh-CN',numberLocale:'ja-JP',cpu:fp.hardwareConcurrency,memory:fp.deviceMemory,tz:fp.timezone,screen:fp.screen.width+' × '+fp.screen.height,dpr:fp.devicePixelRatio,screenMedia:true,dprMedia:true,gpu:'native'},worker:{error:'后台读取受限'},webgpu:{available:false}};
  const result=report(fp,observed,{engine:'test',url:'https://example.test/'});assert.equal(result.differences,1);assert.ok(result.advice.some(row=>row.title==='语言读数不一致'));assert.equal(result.rows.find(row=>row.label==='默认日期语言').actual,'zh-CN');
 });
+
+
+test('地域查询按自身期限中止无响应连接，不依赖 ClientRequest.setTimeout', async () => {
+  const {EventEmitter} = require('node:events');
+  const {requestGeoJSON} = require('../src/main/geo-network');
+  let aborted = 0;
+  const request = new EventEmitter(); request.end = () => {}; request.abort = () => {aborted++;};
+  const started = Date.now();
+  const result = await requestGeoJSON(() => request, 'https://geo.invalid', {timeoutMs:30});
+  assert.match(result.error, /超时/); assert.equal(aborted, 1); assert.ok(Date.now()-started < 1000);
+});
+
+test('地域查询拒绝 HTTP 错误、无效 JSON 与超大响应，并保留正常对象', async () => {
+  const {EventEmitter} = require('node:events');
+  const {requestGeoJSON} = require('../src/main/geo-network');
+  function provider(statusCode, body) {
+    return () => {
+      const request = new EventEmitter(); request.abort = () => {};
+      request.end = () => queueMicrotask(() => {const response = new EventEmitter(); response.statusCode = statusCode; request.emit('response', response); response.emit('data', Buffer.from(body)); response.emit('end');});
+      return request;
+    };
+  }
+  assert.match((await requestGeoJSON(provider(429, '{}'),'https://geo.invalid')).error,/429/);
+  assert.match((await requestGeoJSON(provider(200, '<html>error</html>'),'https://geo.invalid')).error,/JSON/);
+  assert.match((await requestGeoJSON(provider(200, '123456789'),'https://geo.invalid',{maxBytes:4})).error,/过大/);
+  assert.deepEqual(await requestGeoJSON(provider(200, '{"ip":"8.8.8.8","timezone":"Asia/Tokyo"}'),'https://geo.invalid'),{ip:'8.8.8.8',timezone:'Asia/Tokyo'});
+});

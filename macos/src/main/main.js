@@ -1265,7 +1265,7 @@ function registerIpc() {
         }
       } else {
         await wc.session
-          .setProxy({ proxyRules: "", proxyBypassRules: "<-loopback>" })
+          .setProxy({ mode: "direct" })
           .catch(() => {});
       }
       return { ok: true };
@@ -2302,9 +2302,13 @@ async function resolveExitGeo(profile, ses, proxyMs) {
     return { viaProxy: true };
   }
   try {
-    const r = await checkLocalGeo();
+    // Match the browser's actual session/routing. A separate default session
+    // may use a system proxy while the environment uses a direct connection.
+    if (ses) await applyProxyToSession(ses, null);
+    const r = ses ? await _fetchGeoThrough(ses, proxyMs || 8000) : await checkLocalGeo();
     if (r.ok)
       return {
+        ip: r.ip,
         country: r.country,
         timezone: r.timezone,
         locale: r.locale,
@@ -2312,8 +2316,7 @@ async function resolveExitGeo(profile, ses, proxyMs) {
         viaProxy: false,
       };
   } catch (_) {}
-  // 直连 geo 也失败（如国内封禁 geo 源）：viaProxy=false，上层回退 hostTimeZone/hostLocale（OS≈出口）
-  return { viaProxy: false };
+  return {viaProxy:false, error:'尚未取得当前出口的地域信息'};
 }
 
 // 把代理配置应用到指定会话（与 guest:setProxy 同逻辑，供 geo 探测复用，确保探测出口 = 网页出口）
@@ -2352,7 +2355,7 @@ async function applyProxyToSession(ses, proxy) {
     }
   } else {
     await ses
-      .setProxy({ proxyRules: "", proxyBypassRules: "<-loopback>" })
+      .setProxy({ mode: "direct" })
       .catch(() => {});
   }
 }
@@ -2385,38 +2388,11 @@ async function _fetchGeoThrough(ses, timeoutMs, forIp) {
         { url: "http://ip-api.com/json", json: true },
         { url: "https://www.iplocate.io/api/lookup/", json: true }, // 第5源：MaxMind-backed，代理下多一个可达兜底
       ];
-  const results = await Promise.all(
-    endpoints.map(
-      (ep) =>
-        new Promise((resolve) => {
-          try {
-            const req = bindProxyRequestAuthentication(net.request({ url: ep.url, session: ses }), ses);
-            let data = "";
-            req.on("response", (resp) => {
-              resp.on("data", (c) => (data += c));
-              resp.on("end", () => {
-                try {
-                  resolve(ep.json ? JSON.parse(data) : { __raw: data });
-                } catch (_) {
-                  resolve({ __raw: data });
-                }
-              });
-            });
-            req.on("error", (err) => resolve({ error: err.message }));
-            if (req.setTimeout)
-              req.setTimeout(timeoutMs, () => {
-                try {
-                  req.abort();
-                } catch (_) {}
-                resolve({ error: "检测超时（" + timeoutMs + "ms）" });
-              });
-            req.end();
-          } catch (err) {
-            resolve({ error: err.message });
-          }
-        }),
-    ),
-  );
+  const {requestGeoJSON} = require('./geo-network');
+  const results = await Promise.all(endpoints.map(ep => requestGeoJSON(
+    url => bindProxyRequestAuthentication(net.request({url, session:ses}), ses),
+    ep.url, {timeoutMs},
+  )));
   const cands = [];
   for (let i = 0; i < results.length; i++) {
     const info = results[i];

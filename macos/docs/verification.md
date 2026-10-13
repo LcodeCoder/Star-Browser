@@ -189,3 +189,15 @@ Windows x64 NSIS/ZIP 交叉构建成功；验证 PE 架构、asar 版本与主�
 - 保留系统滚轮和触控板原生滚动；定位与标签溢出使用平滑滚动，减少动态效果时停用。新标签按钮紧邻标签末尾，35 标签实际溢出和当前标签定位已测。
 - 逐条检测、搜索/筛选、关闭重开、停止、500 条上限与就地错误均验证。开发者工具的菜单、F12、宿主快捷键均作用于当前网页；加载状态不覆盖工具栏按钮。
 - GitHub Actions 配置 macOS / Windows 运行单元、工作台/浏览器和体验专项并保留证据；尚无本轮 Windows 真机或该远程工作流的运行结果，不能写为跨平台已验收。
+
+
+## 当前环境出口地域与网络期限
+
+2026-10-12（America/Los_Angeles）：38 项单元与 24 项实际 Electron/Chrome 端到端回归通过。真实 Star guest 完成 BrowserScan 和 BrowserLeaks 的 JavaScript、Client Hints、WebRTC、Canvas、WebGL、TLS 七个页面读取。
+
+- 自动地域查询使用环境本身的网络会话；没有环境代理时明确直连，避免另一会话的系统代理出口被用于配置网页语言和时区。
+- Electron 网络请求使用独立期限和中止机制，并限制响应大小；无响应连接、HTTP 错误、无效 JSON 和过大响应有实际事件模拟验证。
+- 此次公网复测中，IP 时区与网页时区均为 Asia/Shanghai，先前的时区差异消失。BrowserScan 仍报告语言差异，HTTP Accept-Language 与 navigator.languages 的完整列表待修复；不把 90% 记为完整通过。
+- BrowserLeaks 六页实际加载；WebRTC 显示 No Leak，Client Hints 的网页与 HTTP 读数一致。原生 GPU 与 TLS 读数保留，未声称内核级隐藏。
+
+证据保存于本机忽略目录 test-results/star-0.13.0/external-after-session-fix/。该目录只包含修复后的复测，不能用于重构修复前的完整报告。
