@@ -24,7 +24,7 @@ Star Browser 是面向日常多环境工作的桌面浏览器，支持 **Windows
 | Windows | x64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:win` |
 | macOS | Apple Silicon / arm64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:mac` |
 
-macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本轮已完成 Mac arm64 打包应用烟测和 Windows x64 交叉构建检查；Windows 用户设备上的安装与运行验收仍需实际验证。
+macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本轮已完成 Mac arm64 打包应用烟测及 Windows x64 构建；GitHub Actions 38481943447 的 macOS、Windows 与内核准备检查均通过，Windows 打包应用实际启动完成 12 项检查。Windows 用户设备上的安装与运行验收仍需实际验证。
 
 ## 功能
 

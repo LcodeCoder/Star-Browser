@@ -24,7 +24,7 @@ let app,origin;
   app=await _electron.launch({executablePath:executable,args:['--host-resolver-rules=MAP qa.local 127.0.0.1'],cwd:root,env:{...process.env,TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:data,TFB_TEST_ORIGIN_PORT:String(origin.port)},timeout:30000});
   const manager=await app.firstWindow();await manager.waitForFunction(()=>typeof window.api==='object');await manager.locator('#btnNew').waitFor();
   const metadata=await app.evaluate(({app})=>({packaged:app.isPackaged,platform:process.platform,arch:process.arch,version:app.getVersion(),electron:process.versions.electron,executable:process.execPath}));
-  assert.equal(metadata.packaged,true);assert.equal(metadata.platform,platform);assert.equal(metadata.arch,architecture);assert.equal(metadata.version,packageVersion);assert.equal(await manager.title(),'Star Browser');
+  assert.equal(metadata.packaged,true);assert.equal(metadata.platform,platform);assert.equal(metadata.arch,architecture);assert.equal(metadata.version,packageVersion);assert.equal(await manager.title(),'Star Browser');assert.equal(await manager.evaluate(()=>window.api.version()),'Star Browser '+packageVersion);
   results.push({name:'安装包中的应用实际启动与管理界面',status:'passed',detail:metadata});
   await manager.locator('#btnNew').click();await manager.locator('#f_name').fill('安装包关窗保护草稿');
   await app.evaluate(({BrowserWindow,dialog})=>{globalThis.__starPackageDialog=dialog.showMessageBox;globalThis.__starPackageClosePrompts=[];dialog.showMessageBox=async(...args)=>{globalThis.__starPackageClosePrompts.push(args.at(-1));return {response:0};};BrowserWindow.getAllWindows().find(window=>!window._profile).close();});
@@ -34,6 +34,7 @@ let app,origin;
   results.push({name:'打包应用的系统关窗保护保留未保存草稿',status:'passed'});
   const profile=await manager.evaluate(({startUrl,profileOs})=>window.api.create({name:'安装包运行测试',os:profileOs,country:'JP',language:'ja-JP',langManual:true,timezone:'Asia/Tokyo',timezoneManual:true,startUrl}),{startUrl:`http://qa.local:${origin.port}/probe`,profileOs});
   const next=app.waitForEvent('window');await manager.evaluate(id=>window.api.browse(id),profile.id);const browser=await next;
+  await browser.waitForFunction(()=>window.api.version().startsWith('Star Browser '));await browser.evaluate(version=>checkVersion({version}),'Star Browser '+packageVersion);assert.equal(await browser.locator('#updateBar').isHidden(),true);
   let early;
   for(let i=0;i<100&&!early;i++){
    early=await app.evaluate(async({webContents},id)=>{const guest=webContents.getAllWebContents().find(w=>w.getType()==='webview'&&w.session.__tfbEnvId===id&&w.getURL().includes('/probe')&&!w.isLoading());return guest?guest.executeJavaScript('window.early'):null;},profile.id);

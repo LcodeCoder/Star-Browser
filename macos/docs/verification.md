@@ -276,3 +276,7 @@ GitHub Actions 38365552148（c978bb3，最终运行代码）macOS 与 Windows �
 本轮 Chromium 补丁策略仍为准备态：固定 155.0.8059.40，硬件 54 项、屏幕 69 项独立策略检查和 Python 工具 15 项通过。`compiledChromium: false`、`p0Complete: false`；完整 Chromium 编译及原生运行验收尚未完成。当前源码 52 个 JavaScript 文件通过语法检查；外部原始证据被清理后，溯源脚本明确报告 `source-unavailable`。
 
 2026-10-13 追加 CI 修复：Windows 作业 115584013719 已确认在批量编辑的 `innerWidth === 500` 等待处超时，前七项实际操作检查通过。窄窗测试改用 `setContentSize` 指定网页内容区域，并同时修复任务测试中的同类假设；本地批量编辑 8 项、任务 13 项重新通过。CI 新增实际 JSON 报告摘要及失败注解，保留 partial/unavailable/skipped 状态。Windows 修复结果以新作业的实际结论为准。
+
+2026-10-13 五小时截止收尾：GitHub Actions 38481943447（bf0d9af）macOS、Windows 和 kernel-policy 均成功，确认 Windows 窄窗回归已修复。Windows x64 打包应用实际启动完成 12 项检查，NSIS/ZIP 的源码资源、架构和完整性通过；这是 Windows runner 的验证，不等同于用户设备安装验收。
+
+五小时窗口到达后已暂停 `star-browser` heartbeat，停止新增范围。最后必要收尾把 preload 的旧固定日期标签改为读取主进程真实应用版本，包检查增加真实版本和同版本不提示升级断言；本地体验质量 12 项、源码 52 文件和 Mac arm64 打包应用 13 项检查通过。最后运行提交的远端 CI 将独立记录。构建中间目录、blockmap、旧 CI 日志与研究下载已清理，保留四个发行文件、总 SHA-256 清单和必要验证证据。没有创建 0.14.0 Release 或把未编译 Chromium 宣称为 P0 完成。

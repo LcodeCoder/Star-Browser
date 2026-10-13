@@ -1,5 +1,6 @@
 "use strict";
 const { contextBridge, ipcRenderer } = require("electron");
+const buildVersion = ipcRenderer.sendSync("star:buildVersion");
 
 function subscribe(channel, callback) {
   const listener = (_event, ...args) => callback(...args);
@@ -71,7 +72,7 @@ contextBridge.exposeInMainWorld("api", {
   // 接收主进程推送的轻量提示（如代理不可达），渲染端以 toast 展示
   onToast: (cb) => subscribe("tfb:toast", cb),
   // 当前构建版本号（客户端用于辨认是否为最新包）
-  version: () => "star-2026-10-12",
+  version: () => buildVersion,
   platform: process.platform,
   guestDevTools: id => ipcRenderer.invoke("guest:devtools",id),
   snapshot: (token) => ipcRenderer.invoke("star:snapshot", token),

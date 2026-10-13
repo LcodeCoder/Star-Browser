@@ -23,7 +23,7 @@
 - 源码语法检查、工作台编辑器、浏览器设置和书签回归；
 - Chromium 补丁策略检查工具与独立策略测试。
 
-Mac arm64 打包应用完成 13 项实际检查。四个发行文件通过完整性、架构、版本和全部 `src/` 资源匹配检查；校验器实际拒绝了过时安装包，失败时保持原哈希清单。
+Mac arm64 打包应用完成 13 项实际检查。四个发行文件通过完整性、架构、版本和全部 `src/` 资源匹配检查；校验器实际拒绝了过时安装包，失败时保持原哈希清单。 GitHub Actions 38481943447 的 macOS、Windows 和内核准备作业均通过；Windows x64 打包应用实际启动完成 12 项检查。浏览器版本提示已改为读取应用真实版本，同版本不会显示升级提示。
 
 Mac arm64 和 Windows x64 安装包由 `npm run build:mac` 与 `npm run build:win` 生成。Windows 交叉构建不替代真实 Windows 设备上的安装验收；macOS 当前使用 ad hoc 签名，未进行 Developer ID 公证。0.14.0 安装包尚未上传到 GitHub Release。
 

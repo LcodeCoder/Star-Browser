@@ -846,6 +846,7 @@ function applyAutoStart() {
 }
 
 function registerIpc() {
+  ipcMain.on("star:buildVersion", event => { event.returnValue = BUILD_TAG; });
   const paths = {
     rootDir: path.join(app.getPath("userData"), "profiles"),
     extTemplateDir: path.join(__dirname, "../extension"),
