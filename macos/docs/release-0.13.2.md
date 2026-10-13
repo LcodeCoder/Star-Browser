@@ -5,3 +5,5 @@
 浏览器的网页画布保留正常白底，避免未声明背景的页面在深色界面中出现黑字配深蓝底。实际截图像素检查覆盖这一问题。
 
 0.13.1 的 macOS/Windows GitHub Actions 已完成；Windows x64 NSIS/ZIP 构建及界面专项通过。Mac 使用 ad hoc 签名，Windows 未签名。
+
+0.13.2 最终运行代码在 GitHub Actions 38365552148 的 macOS 与 Windows 作业均通过，Windows x64 安装包构建成功。Mac arm64 DMG/ZIP 已生成，实际包内检查及安装后的应用验证通过；本机应用已经更新，浏览环境数据保持原样。用户要求本轮完成后停止，持续开发已暂停。
