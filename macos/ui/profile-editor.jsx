@@ -1,3 +1,4 @@
+import {useWindowCloseGuard} from './editor-state';
 import React, {useState, useEffect, useRef} from "react";
 import {Settings2, ShieldCheck, ChevronDown} from "lucide-react";
 import {Button, Modal, Field} from "./components";
@@ -34,6 +35,7 @@ export function ProfileEditor({ profile, onClose }) {
   const [summaryExpanded, setSummaryExpanded] = useState(() => window.innerWidth > 800);
   const [proxyNotice, setProxyNotice] = useState("");
   const dirty = JSON.stringify(form) !== initial.current;
+  useWindowCloseGuard(dirty, busy);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 800px)");
     const resize = () => setSummaryExpanded(!media.matches);

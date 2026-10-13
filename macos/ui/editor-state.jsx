@@ -1,11 +1,21 @@
-import React, {useEffect, useRef, useState} from "react";
+import React, {useEffect, useLayoutEffect, useRef, useState} from "react";
 import {Button} from "./components";
+
+export function useWindowCloseGuard(dirty, busy) {
+  const id = useRef(null);
+  if (!id.current) id.current = crypto.randomUUID();
+  useLayoutEffect(() => {
+    window.api.editorState?.({id:id.current, dirty, busy});
+  }, [dirty, busy]);
+  useLayoutEffect(() => () => window.api.editorState?.({id:id.current, dirty:false, busy:false}), []);
+}
 
 export function useEditorGuard(value, busy, onClose) {
   const initial = useRef(JSON.stringify(value));
   const [discard, setDiscard] = useState(false);
   const footerRef = useRef(null), previousFocus = useRef(null);
   const dirty = JSON.stringify(value) !== initial.current;
+  useWindowCloseGuard(dirty, busy);
   useEffect(() => { if (discard) footerRef.current?.querySelector('[data-continue-editing]')?.focus(); }, [discard]);
   const requestClose = () => {
     if (busy) return;
@@ -22,7 +32,7 @@ export function useEditorGuard(value, busy, onClose) {
 
 export function EditorFooter({guard, busy, error, note, saveLabel, formId, errorId}) {
   return <div className="editor-footer" ref={guard.footerRef}>
-    {error && <p className="inline-error" role="alert" id={errorId}>{error.message || error}</p>}
+    {error && <p className="inline-error" role="alert" tabIndex={-1} id={errorId}>{error.message || error}</p>}
     {guard.discard ? <div className="editor-discard" role="alert">
       <span><strong>修改尚未保存</strong><small>继续编辑，或放弃这次修改后关闭。</small></span>
       <Button data-continue-editing onClick={guard.resume}>继续编辑</Button>

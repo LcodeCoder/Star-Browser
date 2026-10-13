@@ -12,7 +12,7 @@
 | 本机 Chrome | 155.0.8059.40 |
 | 驱动 | Playwright 1.64.0；严格上下文测试独立启动 Electron，通过显式 CDP 会话读取 |
 
-这是源码运行验证。已有 EXE、DMG、ZIP 安装包尚未包含本轮修改；Windows 系统上的实际运行、其他硬件和外部网站结果不在此次通过范围内。
+JS/CDP 专项证据来自本机源码运行。发行包通过 `verify:artifacts` 单独核对对应源码，并在对应平台上用 `test:package` 检查，详见验证记录；Windows 用户设备、其他硬件和任意外部网站不在本地专项通过范围内。
 
 ## 已实现并验证的范围
 
@@ -102,17 +102,17 @@ CreepJS 复现：`npm run test:creepjs:local -- /absolute/path/to/creepjs`（需
 
 | 测试组 | 本轮结果 | 证据 |
 | --- | --- | --- |
-| 单元回归（包含代理与原生模式） | 71 项通过 | `npm test` 输出 |
+| 单元回归（包含代理与原生模式） | 93 项通过 | `npm test` 输出 |
 | 工作台与本机 Chrome 指纹回归 | 17 项通过 | `test-results/fingerprint.json` |
 | 严格上下文、首次脚本、原生对照与生命周期 | 14 项通过，1 项部分通过 | `test-results/fingerprint-contexts.json`，包含逐项实际读值与 `limitations` |
 | 独立 Chrome 原生缩放 | 4 项通过，整体部分 | `test-results/external-display.json` |
 | CreepJS 本地观测 | 3 组观测完成，仍有差异 | `test-results/creepjs-local.json` |
 | 原生内存请求头 | 5 项通过 | `test-results/hardware-headers.json` |
-| 浏览器设置 | 9 项通过 | `test-results/browser-settings.json` |
+| 浏览器设置 | 12 项通过 | `test-results/browser-settings.json` |
 | 标签与休眠恢复 | 8 项通过 | `test-results/tabs.json` |
 | 权限隔离 | 3 项通过 | `test-results/permissions.json` |
 
-工作台报告区分匹配、差异、原生信号、未读取与未运行；后台协议错误影响成功判定。UI 构建与 Git diff 空白检查已通过；源码资源校验确认 21 个原始文件保留，48 个运行时 JavaScript 文件通过语法检查。新增测试脚本另行通过语法检查。
+工作台报告区分匹配、差异、原生信号、未读取与未运行；后台协议错误影响成功判定。UI 构建与 Git diff 空白检查已通过；当前 52 个运行时 JavaScript 文件通过语法检查；原始安装包及提取证据已从工作区清理，溯源脚本明确报告 `source-unavailable`，不再宣称原始文件证据仍存在。新增测试脚本另行通过语法检查。
 
 ## 官方接口依据
 

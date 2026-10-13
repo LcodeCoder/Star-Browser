@@ -698,7 +698,7 @@ function createWindow() {
 
 function startPro() {
   registerIpc();
-  require("./workbench").registerWorkbench(store,{launches:()=>launchState.snapshot(),starting:()=>[...startupJobs.keys()].map(key=>key.slice(key.indexOf(":")+1)),commands:(name,args)=>{const handler=profileCommands.get(name);if(!handler)throw new Error("操作不存在");return handler(null,...args);}});
+  require("./workbench").registerWorkbench(store,{showWorkspace:()=>{if(!win||win.isDestroyed())createWindow();else{win.show();win.focus();}},launches:()=>launchState.snapshot(),starting:()=>[...startupJobs.keys()].map(key=>key.slice(key.indexOf(":")+1)),commands:(name,args)=>{const handler=profileCommands.get(name);if(!handler)throw new Error("操作不存在");return handler(null,...args);}});
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

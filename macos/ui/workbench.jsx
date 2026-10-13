@@ -8,6 +8,7 @@ import { WorkspaceContext, messageOf, osName, proxyLabel, timeAgo } from "./cont
 import { ProfileEditor, ProfileDetail, ProfileMenu, COUNTRIES } from "./profiles";
 import { ProxyPage, CookiePage, BookmarksPage, DownloadsPage, ActivityPage, SettingsPage } from "./pages";
 import { TasksPage } from "./tasks";
+import { BatchProfileEditor } from "./batch-profile-editor";
 import { SynchronizerPage } from "./synchronizer";
 import { ExtensionsPage } from "./extensions";
 const PAGE_SIZE = 75;
@@ -260,7 +261,7 @@ function App() {
     setDetail(null);
     setSelected(/* @__PURE__ */ new Set());
   }}>{label}{count > 0 && <span>{count}</span>}</button>)}</div><div className="page-toolbar environment-toolbar"><div className="search-box"><Search size={17} /><input id="search" ref={searchRef} placeholder="搜索名称、标签或代理…" aria-label="搜索环境" value={query} onChange={(e) => setQuery(e.target.value)} />{query ? <IconButton icon={X} label="清除搜索" onClick={() => setQuery("")} /> : <kbd>{window.api.platform === "darwin" ? "⌘" : "Ctrl"} F</kbd>}</div><div className="toolbar-filters"><select aria-label="筛选标签" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">所有标签</option>{tags.map((t) => <option key={t}>{t}</option>)}</select><select aria-label="排序方式" value={sort} onChange={(e) => setSort(e.target.value)}><option value="recent">最近使用</option><option value="name">名称排序</option><option value="created">最新创建</option></select></div></div>
- {selected.size > 0 && <div className="batch-bar" id="batchBar"><span id="batchCount">已选 {selected.size} 个</span><Button id="batchOpen" icon={Play} variant="primary" disabled={busy.size > 0 || filter === "archive"} onClick={startBatch}>启动</Button><Button icon={Square} onClick={() => execute(() => window.api.action("stop", [...selected]), "选中浏览器已停止")}>停止</Button><Menu items={[{ label: "更改分组 / 标签 / 代理", icon: Settings2, action: () => setBatch({ group: "", tags: "", proxyId: "keep" }) }, { label: "复制所选环境", icon: Copy, action: () => execute(() => window.api.action("clone", [...selected]), "选中环境已复制") }, { label: "导出所选配置", icon: Download, action: () => execute(() => window.api.exportProfiles([...selected]), (r) => r.canceled ? "已取消" : "选中环境已导出") }, { label: filter === "archive" ? "恢复所选" : "移入归档", icon: Archive, action: async () => {
+ {selected.size > 0 && <div className="batch-bar" id="batchBar"><span id="batchCount">已选 {selected.size} 个</span><Button id="batchOpen" icon={Play} variant="primary" disabled={busy.size > 0 || filter === "archive"} onClick={startBatch}>启动</Button><Button icon={Square} onClick={() => execute(() => window.api.action("stop", [...selected]), "选中浏览器已停止")}>停止</Button><Menu items={[{ label: "更改分组 / 标签 / 代理", icon: Settings2, action: () => setBatch([...selected]) }, { label: "复制所选环境", icon: Copy, action: () => execute(() => window.api.action("clone", [...selected]), "选中环境已复制") }, { label: "导出所选配置", icon: Download, action: () => execute(() => window.api.exportProfiles([...selected]), (r) => r.canceled ? "已取消" : "选中环境已导出") }, { label: filter === "archive" ? "恢复所选" : "移入归档", icon: Archive, action: async () => {
     const r = await execute(() => window.api.action(filter === "archive" ? "restore" : "archive", [...selected]), filter === "archive" ? "环境已恢复" : "环境已归档");
     if (r) setSelected(/* @__PURE__ */ new Set());
   } }]} /><span className="toolbar-spacer" /><IconButton icon={X} label="取消选择" id="batchClear" onClick={() => setSelected(/* @__PURE__ */ new Set())} /></div>}
@@ -283,14 +284,7 @@ function App() {
       setConfirmBusy(false);
     }
   }}>{confirmBusy ? "处理中…" : confirmState?.label || "确认"}</Button></div></div>} />
- <Modal open={!!batch} onOpenChange={(v) => !v && setBatch(null)} title="批量更改配置" description={`更改选中的 ${selected.size} 个环境。留空的字段会保持原值。`} footer={<><Button onClick={() => setBatch(null)}>取消</Button><Button variant="primary" onClick={async () => {
-    const patch = {};
-    if (batch.group.trim()) patch.group = batch.group.trim();
-    if (batch.tags.trim()) patch.tags = batch.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-    if (batch.proxyId !== "keep") patch.proxy = batch.proxyId === "direct" ? null : snapshot.proxies.find((p) => p.id === batch.proxyId);
-    const r = await execute(() => window.api.action("update", [...selected], patch), "选中环境已更新");
-    if (r) setBatch(null);
-  }}>保存更改</Button></>}><div className="form-grid"><Field label="分组" className="span-2"><input value={batch?.group || ""} onChange={(e) => setBatch((b) => ({ ...b, group: e.target.value }))} placeholder="保留当前分组" /></Field><Field label="替换标签" className="span-2"><input value={batch?.tags || ""} onChange={(e) => setBatch((b) => ({ ...b, tags: e.target.value }))} placeholder="逗号分隔；留空则保留" /></Field><Field label="代理配置" className="span-2"><select value={batch?.proxyId || "keep"} onChange={(e) => setBatch((b) => ({ ...b, proxyId: e.target.value }))}><option value="keep">保留当前代理</option><option value="direct">使用本机网络</option>{snapshot.proxies.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field></div></Modal>
+ {batch&&<BatchProfileEditor ids={batch} onClose={()=>setBatch(null)}/>}
  <Modal open={!!importState} onOpenChange={(v) => !v && !importBusy && setImport(null)} title="确认导入环境" description={`文件已通过配置校验，包含 ${importState?.count || 0} 个环境。将建立新的独立环境，已有数据会保留。`} footer={<><Button disabled={importBusy} onClick={() => setImport(null)}>取消</Button><Button variant="primary" disabled={importBusy} onClick={async () => {
     setImportBusy(true);
     const r = await execute(() => window.api.importApply(importState.token), (r2) => `已导入 ${r2.count} 个环境`);

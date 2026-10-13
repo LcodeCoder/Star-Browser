@@ -7,30 +7,39 @@ const os=require('node:os');
 const {execFileSync}=require('node:child_process');
 const {startOrigin}=require('./fixtures.cjs');
 const root=path.resolve(__dirname,'..');
-const bundle=path.join(root,'dist/mac-arm64/Star Browser.app');
-const executable=path.join(bundle,'Contents/MacOS/Star Browser');
+const platform=process.platform,architecture=process.arch;
+const bundle=platform==='darwin'?path.join(root,'dist',architecture==='arm64'?'mac-arm64':'mac','Star Browser.app'):path.join(root,'dist',architecture==='arm64'?'win-arm64-unpacked':'win-unpacked');
+const executable=platform==='darwin'?path.join(bundle,'Contents/MacOS/Star Browser'):path.join(bundle,'Star Browser.exe');
+const profileOs=platform==='win32'?'win':'mac';
+const packageVersion=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version;
 const data=fs.mkdtempSync(path.join(os.tmpdir(),'changyi-package-'));
 const results=[];
 let app,origin;
 (async()=>{
  try{
-  assert.ok(fs.existsSync(executable),'先运行 npm run build:mac');
-  const signature=execFileSync('/usr/bin/codesign',['--verify','--deep','--strict','--verbose=2',bundle],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
-  results.push({name:'打包 .app 的完整签名校验',status:'passed',detail:signature.trim()||'valid'});
+  assert.ok(['darwin','win32'].includes(platform),'此打包测试需要 macOS 或 Windows 主机');
+  assert.ok(fs.existsSync(executable),platform==='darwin'?'先运行对应架构的 build:mac':'先运行对应架构的 build:win');
+  if(platform==='darwin'){const signature=execFileSync('/usr/bin/codesign',['--verify','--deep','--strict','--verbose=2',bundle],{encoding:'utf8',stdio:['ignore','pipe','pipe']});results.push({name:'打包 .app 的完整签名校验',status:'passed',detail:signature.trim()||'valid'});}
   origin=await startOrigin();
   app=await _electron.launch({executablePath:executable,args:['--host-resolver-rules=MAP qa.local 127.0.0.1'],cwd:root,env:{...process.env,TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:data,TFB_TEST_ORIGIN_PORT:String(origin.port)},timeout:30000});
   const manager=await app.firstWindow();await manager.waitForFunction(()=>typeof window.api==='object');await manager.locator('#btnNew').waitFor();
-  const metadata=await app.evaluate(({app})=>({packaged:app.isPackaged,platform:process.platform,arch:process.arch,electron:process.versions.electron,executable:process.execPath}));
-  assert.equal(metadata.packaged,true);assert.equal(metadata.arch,'arm64');assert.equal(await manager.title(),'Star Browser');
+  const metadata=await app.evaluate(({app})=>({packaged:app.isPackaged,platform:process.platform,arch:process.arch,version:app.getVersion(),electron:process.versions.electron,executable:process.execPath}));
+  assert.equal(metadata.packaged,true);assert.equal(metadata.platform,platform);assert.equal(metadata.arch,architecture);assert.equal(metadata.version,packageVersion);assert.equal(await manager.title(),'Star Browser');
   results.push({name:'安装包中的应用实际启动与管理界面',status:'passed',detail:metadata});
-  const profile=await manager.evaluate(startUrl=>window.api.create({name:'安装包运行测试',os:'mac',country:'JP',language:'ja-JP',langManual:true,timezone:'Asia/Tokyo',timezoneManual:true,startUrl}),`http://qa.local:${origin.port}/probe`);
+  await manager.locator('#btnNew').click();await manager.locator('#f_name').fill('安装包关窗保护草稿');
+  await app.evaluate(({BrowserWindow,dialog})=>{globalThis.__starPackageDialog=dialog.showMessageBox;globalThis.__starPackageClosePrompts=[];dialog.showMessageBox=async(...args)=>{globalThis.__starPackageClosePrompts.push(args.at(-1));return {response:0};};BrowserWindow.getAllWindows().find(window=>!window._profile).close();});
+  let closePrompt;for(let index=0;index<100&&!closePrompt;index++){closePrompt=await app.evaluate(()=>globalThis.__starPackageClosePrompts[0]);if(!closePrompt)await new Promise(resolve=>setTimeout(resolve,30));}
+  assert.equal(closePrompt?.title,'修改尚未保存');assert.equal(closePrompt.cancelId,0);assert.equal(manager.isClosed(),false);assert.equal(await manager.locator('#f_name').inputValue(),'安装包关窗保护草稿');assert.equal((await manager.evaluate(()=>window.api.snapshot())).profiles.length,0);
+  await app.evaluate(({dialog})=>{dialog.showMessageBox=globalThis.__starPackageDialog;delete globalThis.__starPackageDialog;});await manager.keyboard.press('Escape');await manager.getByRole('button',{name:'放弃更改',exact:true}).click();await manager.locator('.profile-editor-modal').waitFor({state:'hidden'});
+  results.push({name:'打包应用的系统关窗保护保留未保存草稿',status:'passed'});
+  const profile=await manager.evaluate(({startUrl,profileOs})=>window.api.create({name:'安装包运行测试',os:profileOs,country:'JP',language:'ja-JP',langManual:true,timezone:'Asia/Tokyo',timezoneManual:true,startUrl}),{startUrl:`http://qa.local:${origin.port}/probe`,profileOs});
   const next=app.waitForEvent('window');await manager.evaluate(id=>window.api.browse(id),profile.id);const browser=await next;
   let early;
   for(let i=0;i<100&&!early;i++){
    early=await app.evaluate(async({webContents},id)=>{const guest=webContents.getAllWebContents().find(w=>w.getType()==='webview'&&w.session.__tfbEnvId===id&&w.getURL().includes('/probe')&&!w.isLoading());return guest?guest.executeJavaScript('window.early'):null;},profile.id);
    if(!early)await new Promise(r=>setTimeout(r,100));
   }
-  assert.equal(early?.platform,'MacIntel');assert.equal(early?.language,'ja-JP');assert.equal(early?.tz,'Asia/Tokyo');
+  assert.equal(early?.platform,profileOs==='mac'?'MacIntel':'Win32');assert.equal(early?.language,'ja-JP');assert.equal(early?.tz,'Asia/Tokyo');
   results.push({name:'asar 内浏览器资源、动态 preload 与首屏指纹',status:'passed',detail:early});
   const nativeDate=await app.evaluate(async({webContents},id)=>{const guest=webContents.getAllWebContents().find(w=>w.getType()==='webview'&&w.session.__tfbEnvId===id&&w.getURL().includes('/probe'));return guest.executeJavaScript("(()=>{const d=new Date('2026-01-15T12:00:00Z');return {month:d.getMonth(),hour:d.getHours(),offset:d.getTimezoneOffset(),utc:new Intl.DateTimeFormat('en-GB',{timeZone:'UTC'}).resolvedOptions().timeZone,invalid:Number.isNaN(new Date('invalid').getMonth())};})()");},profile.id);
   assert.deepEqual(nativeDate,{month:0,hour:21,offset:-540,utc:'UTC',invalid:true});
@@ -88,9 +97,11 @@ let app,origin;
   assert.equal(taskResult?.state,'completed',taskResult?.error);assert.equal(taskResult.outputs.length,1);assert.deepEqual([...fs.readFileSync(taskResult.outputs[0].path).subarray(0,8)],[137,80,78,71,13,10,26,10]);
   results.push({name:'打包应用中的实际任务执行与截图',status:'passed'});
   const taskFile=path.join(data,'package-tasks.json');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},taskFile);
-  assert.equal((await manager.evaluate(id=>window.api.taskExport([id]),savedTask.id)).count,1);assert.equal(fs.statSync(taskFile).mode&0o777,0o600);assert.equal(JSON.parse(fs.readFileSync(taskFile,'utf8')).tasks[0].id,undefined);
+  assert.equal((await manager.evaluate(id=>window.api.taskExport([id]),savedTask.id)).count,1);if(platform!=='win32')assert.equal(fs.statSync(taskFile).mode&0o777,0o600);assert.equal(JSON.parse(fs.readFileSync(taskFile,'utf8')).tasks[0].id,undefined);
   const taskPreview=await manager.evaluate(()=>window.api.taskImportPreview());assert.equal(taskPreview.count,1);const importedTask=await manager.evaluate(token=>window.api.taskImportApply(token),taskPreview.token);assert.equal(importedTask.count,1);assert.notEqual(importedTask.ids[0],savedTask.id);assert.equal((await manager.evaluate(()=>window.api.snapshot())).taskRuns.length,1);
   results.push({name:'打包应用的真实任务文件导出、预览与独立导入',status:'passed'});
+  const installedChrome=(await manager.evaluate(()=>window.api.snapshot())).engine.chrome;
+  if(installedChrome){
   await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);await manager.evaluate(id=>window.api.launch(id),profile.id);
   const chromeVersion=await app.evaluate(({app} ,id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return require('./src/main/launcher').getLaunchedBrowser(id).fingerprint.chromeVersion;},profile.id);
   assert.equal((await manager.evaluate(id=>window.api.preview(id),profile.id)).chromeVersion,chromeVersion);
@@ -101,12 +112,15 @@ let app,origin;
   const chromePid=await app.evaluate(({app},id)=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');return require('./src/main/launcher').getLaunchedBrowser(id).child.pid;},profile.id);
   await manager.evaluate(id=>window.api.action('stop',[id]),profile.id);assert.throws(()=>process.kill(chromePid,0),{code:'ESRCH'});
   results.push({name:'打包应用中的真实 Chrome 多标签选择检查与运行配置',status:'passed'});
-  console.log(`Packaged macOS app: ${results.filter(row=>row.status==='passed').length} checks passed.`);
+  }else{results.push({name:'打包应用中的真实 Chrome 多标签选择检查与运行配置',status:'not-exercised',detail:'测试主机没有安装独立 Chrome，未验证此路径'});}
+  console.log(`Packaged ${platform} ${architecture} app: ${results.filter(row=>row.status==='passed').length} checks passed.`);
  }catch(error){console.error(error);results.push({name:'打包应用测试',status:'failed',error:error.stack});process.exitCode=1;}
  finally{
   if(app){await app.evaluate(async({app})=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json'),browsers=require('./src/main/launcher').getLaunchedBrowsers();await Promise.all(browsers.map(async([,running])=>{await running.pipe.send('Browser.close').catch(()=>running.child.kill());for(let i=0;i<150&&running.child.exitCode===null&&running.child.signalCode===null;i++)await new Promise(resolve=>setTimeout(resolve,30));if(running.child.exitCode===null&&running.child.signalCode===null)running.child.kill();}));}).catch(()=>{});await app.close().catch(()=>{});}
   if(origin)await origin.close();
   fs.rmSync(data,{recursive:true,force:true,maxRetries:5,retryDelay:100});
-  fs.writeFileSync(path.join(root,'test-results/package-smoke.json'),JSON.stringify({status:process.exitCode?'failed':'passed',testedAt:new Date().toISOString(),results},null,2)+'\n');
+  fs.mkdirSync(path.join(root,'test-results'),{recursive:true});
+  const report={platform,arch:architecture,version:packageVersion,executable,status:process.exitCode?'failed':'passed',testedAt:new Date().toISOString(),results};
+  for(const name of ['package-smoke.json',`package-smoke-${platform}-${architecture}.json`])fs.writeFileSync(path.join(root,'test-results',name),JSON.stringify(report,null,2)+'\n');
  }
 })();

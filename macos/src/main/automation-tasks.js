@@ -6,12 +6,31 @@ const {validateTask,KEYS}=require('./task-validation');
 class TaskCancelled extends Error{constructor(){super('任务已取消');}}
 class AutomationTasks{
  constructor({app,store,commands,synchronizer}){
-  Object.assign(this,{app,store,commands,synchronizer});this.queue=[];this.active=null;this.output=path.join(app.getPath('userData'),'task-output');
+  Object.assign(this,{app,store,commands,synchronizer});this.queue=[];this.active=null;this.pendingResults=new Map();this._revision=0;this.output=path.join(app.getPath('userData'),'task-output');
   const interrupted=store.taskRuns().filter(run=>['queued','starting','running'].includes(run.state));if(interrupted.length)store.transaction(()=>{for(const run of interrupted)store.saveTaskRun({...run,state:'interrupted',finishedAt:Date.now(),error:'应用已退出，任务没有自动继续'});});
  }
  save(input){const data=validateTask(input);if(input.id&&!this.store.tasks().some(t=>t.id===input.id))throw new Error('任务已不存在');return this.store.saveTask({...data,id:input.id||crypto.randomUUID(),updatedAt:Date.now()});}
- remove(id){if(this.store.taskRuns().some(run=>run.taskId===id&&['queued','starting','running'].includes(run.state)))throw new Error('请先取消这个任务的运行，再删除');return this.store.removeTask(id);}
+ remove(id){if([...this.pendingResults.values()].some(item=>item.run.taskId===id))throw new Error('请先保存这个任务的执行结果，再删除');if(this.store.taskRuns().some(run=>run.taskId===id&&['queued','starting','running'].includes(run.state)))throw new Error('请先取消这个任务的运行，再删除');return this.store.removeTask(id);}
+ revision(){return this._revision;}
+ runs(){
+  const rows=new Map(this.store.taskRuns().map(run=>[run.id,run]));
+  for(const {run,error} of this.pendingResults.values())rows.set(run.id,{...structuredClone(run),persistenceError:error});
+  return [...rows.values()].sort((a,b)=>b.createdAt-a.createdAt);
+ }
+ finish(run){
+  const record=structuredClone(run),activity=record.state==='completed'?'任务完成':record.state==='cancelled'?'任务已取消':'任务失败';
+  try{this.store.transaction(()=>{this.store.saveTaskRun(record);this.store.activity(activity,record.taskName,record.profileName);});this.pendingResults.delete(record.id);}
+  catch(error){this.pendingResults.set(record.id,{run:record,activity,error:String(error.message||error)});}
+  this._revision++;
+ }
+ retryResults({resume=true}={}){
+  if(!this.pendingResults.size)return {ok:true,count:0};
+  const pending=[...this.pendingResults.values()];
+  this.store.transaction(()=>{for(const item of pending){this.store.saveTaskRun(item.run);this.store.activity(item.activity,item.run.taskName,item.run.profileName);}});
+  this.pendingResults.clear();this._revision++;if(resume)this.pump().catch(()=>{});return {ok:true,count:pending.length};
+ }
  start(taskId,ids){
+  if(this.pendingResults.size)throw new Error('请先保存待写入的执行结果，再添加任务');
   const task=this.store.tasks().find(t=>t.id===taskId);if(!task)throw new Error('任务已不存在');
   if(!Array.isArray(ids)||!ids.length||ids.length>50||new Set(ids).size!==ids.length)throw new Error('每次请选择 1–50 个不同环境');
   if(this.queue.length+(this.active?1:0)+ids.length>100)throw new Error('执行队列最多 100 个环境，请等待完成或取消后再添加');
@@ -22,12 +41,15 @@ class AutomationTasks{
   this.queue.push(...runs.map(run=>({run,task:structuredClone(data),cancelled:false})));this.pump().catch(()=>{});return runs;
  }
  cancel(id){
-  const item=this.active?.run.id===id?this.active:this.queue.find(row=>row.run.id===id);if(!item)throw new Error('此任务已经结束');item.cancelled=true;
-  if(item!==this.active){this.queue=this.queue.filter(row=>row!==item);this.store.saveTaskRun({...item.run,state:'cancelled',finishedAt:Date.now()});}
-  return true;
+  const item=this.active?.run.id===id?this.active:this.queue.find(row=>row.run.id===id);if(!item)throw new Error('此任务已经结束');
+  if(item!==this.active){
+   this.store.saveTaskRun({...item.run,state:'cancelled',finishedAt:Date.now()});
+   this.queue=this.queue.filter(row=>row!==item);
+  }
+  item.cancelled=true;return true;
  }
  async pump(){
-  if(this.active)return;const item=this.queue.shift();if(!item)return;this.active=item;
+  if(this.active||this.pendingResults.size)return;const item=this.queue.shift();if(!item)return;this.active=item;
   try{await this.execute(item);}finally{this.active=null;queueMicrotask(()=>this.pump().catch(()=>{}));}
  }
  check(item){if(item.cancelled)throw new TaskCancelled();if(!this.store.get(item.run.profileId))throw new Error('任务环境已不存在');if(item.windowReady&&!this.synchronizer.window(item.run.profileId))throw new Error('任务浏览器窗口已关闭');if(item.guestId&&this.synchronizer.activeGuest(item.run.profileId)?.wc.id!==item.guestId)throw new Error('任务标签已切换或关闭，请回到原标签后重新执行');if(Date.now()-item.startedAt>15*60*1000)throw new Error('任务已超过 15 分钟，请拆分步骤后重试');}
@@ -80,10 +102,10 @@ class AutomationTasks{
     this.check(item);run.step=index+1;this.store.saveTaskRun({...run});const started=Date.now();
     await this.step(item,item.task.steps[index],index);run.steps.push({index:index+1,type:item.task.steps[index].type,state:'completed',duration:Date.now()-started});this.store.saveTaskRun({...run,steps:[...run.steps],outputs:[...run.outputs]});
    }
-   run.state='completed';run.finishedAt=Date.now();this.store.transaction(()=>{this.store.saveTaskRun({...run});this.store.activity('任务完成',run.taskName,run.profileName);});
-  }catch(error){run.state=error instanceof TaskCancelled?'cancelled':'failed';run.error=error instanceof TaskCancelled?'':error.message;run.finishedAt=Date.now();this.store.transaction(()=>{this.store.saveTaskRun({...run});this.store.activity(run.state==='cancelled'?'任务已取消':'任务失败',run.taskName,run.profileName);});}
+   run.state='completed';run.finishedAt=Date.now();this.finish(run);
+  }catch(error){run.state=error instanceof TaskCancelled?'cancelled':'failed';run.error=error instanceof TaskCancelled?'':error.message;run.finishedAt=Date.now();this.finish(run);}
   finally{if(locked)unlockProfile(run.profileId,run.id);}
  }
- outputFile(runId,index){const run=this.store.taskRuns().find(r=>r.id===runId),file=run?.outputs?.[index]?.path;if(!file||!path.resolve(file).startsWith(this.output+path.sep)||!fs.existsSync(file))throw new Error('截图已移动或删除');return file;}
+ outputFile(runId,index){const run=this.runs().find(r=>r.id===runId),file=run?.outputs?.[index]?.path;if(!file||!path.resolve(file).startsWith(this.output+path.sep)||!fs.existsSync(file))throw new Error('截图已移动或删除');return file;}
 }
 module.exports={AutomationTasks,validateTask};

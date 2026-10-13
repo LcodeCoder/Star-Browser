@@ -1,5 +1,9 @@
 """Regression checks for read-only upgrade reports and locked asset integrity."""
 import copy
+import base64
+import contextlib
+import io
+import urllib.error
 import hashlib
 import importlib.util
 import json
@@ -153,6 +157,68 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(kernel.resolve_revision('B'*40), 'b'*40)
         with self.assertRaises(ValueError):
             kernel.resolve_revision('main?format=TEXT')
+
+
+
+class UpstreamDownloadTests(unittest.TestCase):
+    def test_rate_limit_retries_are_bounded_and_then_return_real_bytes(self):
+        limited = urllib.error.HTTPError('https://example.test', 429, 'rate limited', {'Retry-After': '120'}, None)
+        with patch.object(kernel.urllib.request, 'urlopen', side_effect=[limited, io.BytesIO(b'upstream')]) as request, patch.object(kernel.time, 'sleep') as delay:
+            self.assertEqual(kernel.request_bytes('https://example.test'), b'upstream')
+            self.assertEqual(request.call_count, 2)
+            delay.assert_called_once_with(5)
+
+    def test_permanent_http_failure_is_not_retried(self):
+        failure = urllib.error.HTTPError('https://example.test', 404, 'missing', {}, None)
+        with patch.object(kernel.urllib.request, 'urlopen', side_effect=failure) as request, patch.object(kernel.time, 'sleep') as delay:
+            with self.assertRaises(urllib.error.HTTPError):
+                kernel.request_bytes('https://example.test')
+            self.assertEqual(request.call_count, 1)
+            delay.assert_not_called()
+
+    def test_official_fallback_uses_exact_commit_and_requires_locked_hash(self):
+        data = b'locked Chromium source'
+        item = {'path': 'chrome/VERSION', 'sha256': hashlib.sha256(data).hexdigest()}
+        failure = urllib.error.HTTPError('https://example.test', 429, 'limited', {}, None)
+        with patch.dict(kernel.os.environ, {}, clear=True), patch.object(kernel, 'request_bytes', side_effect=[failure, base64.b64encode(data)]) as request:
+            actual, provider = kernel.fetch_pinned_file(item)
+        self.assertEqual(actual, data)
+        self.assertEqual(provider, 'chromium-gitiles')
+        for call in request.call_args_list:
+            self.assertIn(kernel.LOCK['commit'], call.args[0])
+        self.assertTrue(request.call_args_list[-1].args[0].endswith('?format=TEXT'))
+
+    def test_hash_mismatch_does_not_write_cache_or_accept_other_source(self):
+        item = {'path': 'chrome/VERSION', 'sha256': hashlib.sha256(b'expected').hexdigest()}
+        with tempfile.TemporaryDirectory() as cache, patch.dict(kernel.os.environ, {'STAR_KERNEL_CACHE': cache}), patch.object(kernel, 'request_bytes', return_value=b'changed source') as request:
+            with self.assertRaisesRegex(RuntimeError, 'hash mismatch'):
+                kernel.fetch_pinned_file(item)
+            self.assertEqual(list(Path(cache).iterdir()), [])
+            self.assertEqual(request.call_count, 1)
+
+    def test_corrupt_cache_is_replaced_atomically_and_verified_cache_avoids_network(self):
+        data = b'verified source'
+        item = {'path': 'chrome/VERSION', 'sha256': hashlib.sha256(data).hexdigest()}
+        with tempfile.TemporaryDirectory() as cache, patch.dict(kernel.os.environ, {'STAR_KERNEL_CACHE': cache}):
+            target = Path(cache) / item['sha256']
+            target.write_bytes(b'corrupt cache')
+            with patch.object(kernel, 'request_bytes', return_value=data) as request:
+                self.assertEqual(kernel.fetch_pinned_file(item), (data, 'github-mirror'))
+                self.assertEqual(kernel.fetch_pinned_file(item), (data, 'verified-cache'))
+                self.assertEqual(request.call_count, 1)
+            self.assertEqual(target.read_bytes(), data)
+            self.assertEqual([file.name for file in Path(cache).iterdir()], [item['sha256']])
+
+    def test_failed_verification_writes_failure_report_without_compilation_claim(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / 'result.json'
+            with patch.object(kernel.sys, 'argv', ['kernel.py', 'verify-patches', '--output', str(target)]), patch.object(kernel, 'verify_patch_bundle', side_effect=RuntimeError('network unavailable')), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(kernel.main(), 1)
+            report = json.loads(target.read_text())
+            self.assertEqual(report['status'], 'patch-preparation-failed')
+            self.assertEqual(report['error'], 'network unavailable')
+            self.assertFalse(report['compiledChromium'])
+            self.assertFalse(report['p0Complete'])
 
 
 if __name__ == '__main__':

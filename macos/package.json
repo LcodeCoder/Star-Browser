@@ -9,10 +9,11 @@
   "tfbMode": "changyi",
   "scripts": {
     "start": "npm run build:ui && electron .",
-    "test": "node --test tests/unit.test.cjs tests/proxy-readiness.test.cjs tests/fingerprint-native-mode.test.cjs tests/proxy-import.test.cjs",
+    "test": "node --test tests/unit.test.cjs tests/proxy-readiness.test.cjs tests/fingerprint-native-mode.test.cjs tests/proxy-import.test.cjs tests/storage-atomicity.test.cjs tests/task-quit-guard.test.cjs tests/editor-close-guard.test.cjs",
     "test:e2e": "node tests/e2e.cjs",
     "test:package": "node tests/package-smoke.cjs",
     "verify:source": "node scripts/verify-source.cjs",
+    "verify:artifacts": "node scripts/verify-artifacts.cjs",
     "build:mac": "npm run build:ui && electron-builder --mac --arm64 --publish never",
     "build:mac:intel": "npm run build:ui && electron-builder --mac --x64 --publish never",
     "build:ui": "node scripts/build-ui.cjs",
@@ -48,7 +49,9 @@
     "test:native-display:controls": "node tests/native-display.cjs --controls-only",
     "test:native-display": "node tests/native-display.cjs",
     "test:cookie-workspace": "node tests/cookie-workspace.cjs",
-    "test:proxy-workspace": "node tests/proxy-workspace.cjs"
+    "test:proxy-workspace": "node tests/proxy-workspace.cjs",
+    "test:batch-profiles": "node tests/batch-profiles.cjs",
+    "test:editor-close": "node tests/editor-close.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",

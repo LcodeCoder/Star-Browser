@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -93,34 +94,75 @@ def verify_patch_bundle():
     with tempfile.TemporaryDirectory(prefix='star-kernel-patch-check-') as temp:
         source = Path(temp)
         def fetch(item):
-            url = ('https://raw.githubusercontent.com/chromium/chromium/' +
-                   LOCK['commit'] + '/' + item['path'])
-            request = urllib.request.Request(url, headers={'User-Agent': 'Star-Browser-kernel'})
-            with urllib.request.urlopen(request, timeout=45) as response:
-                data = response.read()
-            if hashlib.sha256(data).hexdigest() != item['sha256']:
-                raise RuntimeError('Downloaded source hash mismatch: ' + item['path'])
+            data, provider = fetch_pinned_file(item)
             target = source / item['path']
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-            list(pool.map(fetch, LOCK['upstreamFiles']))
+            return provider
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            providers = list(pool.map(fetch, LOCK['upstreamFiles']))
         apply(source, verify_revision=False)
         result = native_policy_test(source)
         return {'status': 'patch-preparation-verified', 'version': LOCK['version'],
                 'sourceCommit': LOCK['commit'], 'upstreamFiles': len(LOCK['upstreamFiles']),
                 'overlays': len(LOCK['overlays']), 'policyTest': result,
+                'sourceProviders': {provider: providers.count(provider) for provider in sorted(set(providers))},
                 'compiledChromium': False, 'p0Complete': False}
 
 
 
 def request_bytes(url):
     request = urllib.request.Request(url, headers={'User-Agent': 'Star-Browser-kernel'})
-    with urllib.request.urlopen(request, timeout=45) as response:
-        data = response.read(8 * 1024 * 1024 + 1)
-    if len(data) > 8 * 1024 * 1024:
-        raise RuntimeError('Upstream response exceeds 8 MiB')
-    return data
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = response.read(8 * 1024 * 1024 + 1)
+            if len(data) > 8 * 1024 * 1024:
+                raise RuntimeError('Upstream response exceeds 8 MiB')
+            return data
+        except (urllib.error.URLError, TimeoutError) as error:
+            if isinstance(error, urllib.error.HTTPError) and error.code not in [408, 429, 500, 502, 503, 504]:
+                raise
+            if attempt == 2:
+                raise
+            delay = 1 + attempt
+            try:
+                delay = min(5, max(delay, float(getattr(error, 'headers', {}).get('Retry-After', 0))))
+            except (AttributeError, TypeError, ValueError):
+                pass
+            time.sleep(delay)
+
+
+def fetch_pinned_file(item):
+    cache = os.environ.get('STAR_KERNEL_CACHE')
+    target = Path(cache) / item['sha256'] if cache else None
+    if target and target.is_file() and not target.is_symlink():
+        with target.open('rb') as stream:
+            cached = stream.read(8 * 1024 * 1024 + 1)
+        if len(cached) <= 8 * 1024 * 1024 and hashlib.sha256(cached).hexdigest() == item['sha256']:
+            return cached, 'verified-cache'
+    url = ('https://raw.githubusercontent.com/chromium/chromium/' +
+           LOCK['commit'] + '/' + urllib.parse.quote(item['path'], safe='/'))
+    try:
+        data = request_bytes(url)
+        provider = 'github-mirror'
+    except (urllib.error.URLError, TimeoutError):
+        data = fetch_revision_file(LOCK['commit'], item['path'])
+        provider = 'chromium-gitiles'
+    if hashlib.sha256(data).hexdigest() != item['sha256']:
+        raise RuntimeError('Downloaded source hash mismatch: ' + item['path'])
+    if target:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=target.parent, prefix='.star-upstream-', delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(data)
+            temporary.replace(target)
+        finally:
+            if temporary and temporary.exists():
+                temporary.unlink()
+    return data, provider
 
 
 def resolve_revision(ref):
@@ -324,7 +366,13 @@ def main():
         checked_assets()
         print(native_policy_test())
     elif args.command == 'verify-patches':
-        result = verify_patch_bundle()
+        try:
+            result = verify_patch_bundle()
+        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+            result = {'status': 'patch-preparation-failed', 'version': LOCK['version'],
+                      'sourceCommit': LOCK['commit'], 'error': str(error),
+                      'compiledChromium': False, 'p0Complete': False}
+            code = 1
     elif args.command == 'check-compatibility':
         result = check_compatibility(args.source, args.ref)
         code = 0 if result['patchApplies'] else 2

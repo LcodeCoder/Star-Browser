@@ -7,7 +7,7 @@ const {validateProfile,validateProxy,importProfiles}=require('./profile-validati
 const {getLaunchedBrowser,getLaunchedBrowsers,findChrome}=require('./launcher');
 const {parseProxyInput}=require('./proxy-parse');
 const pendingImports=new Map(), downloadItems=new Map();
-function registerWorkbench(store,{commands,starting,launches=()=>[]}={}) {
+function registerWorkbench(store,{commands,starting,showWorkspace,launches=()=>[]}={}) {
   const extensions=require('./extensions').initExtensionLibrary(app.getPath('userData'),store),pendingExtensions=new Map();
   ipcMain.handle('star:extensionPreview',async(e)=>{
     const choice=await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender),{title:'选择已解压扩展',properties:['openDirectory']});if(choice.canceled)return {canceled:true};
@@ -84,7 +84,10 @@ function registerWorkbench(store,{commands,starting,launches=()=>[]}={}) {
   ipcMain.handle('star:fingerprintAudit',async(e,id,targetId)=>{managerOnly(e);const current=synchronizer.activeGuest(id);if(current){if(targetId)throw new Error('浏览器已切换，请刷新后重新检查');return require('./fingerprint-audit').auditElectron(current.wc);}const chrome=getLaunchedBrowser(id);if(chrome&&!chrome.pipe.closed)return require('./fingerprint-audit').auditChrome(chrome,targetId);throw new Error('请先启动这个环境并打开网页');});
   const tasks=new (require('./automation-tasks').AutomationTasks)({app,store,commands,synchronizer});
   const taskTransfers=new (require('./task-transfer').TaskTransfers)(store),transferOwners=new Set();
-  app.once('before-quit',()=>taskTransfers.dispose());
+  const editorCloseGuard=new (require('./editor-close-guard').EditorCloseGuard)({app,dialog,BrowserWindow});
+  ipcMain.on('star:editorState',(event,state)=>{try{managerOnly(event);editorCloseGuard.update(event.sender,state);}catch{}});
+  require('./task-quit-guard').installTaskQuitGuard({app,dialog,tasks,showWorkspace});
+  app.on('will-quit',()=>taskTransfers.dispose());
   ipcMain.handle('star:taskExport',async(e,ids)=>{managerOnly(e);const document=taskTransfers.document(ids),choice=await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender),{title:'导出任务定义',defaultPath:'Star-Browser-tasks-'+new Date().toISOString().slice(0,10)+'.json',filters:[{name:'任务 JSON',extensions:['json']}]});if(choice.canceled)return {canceled:true};return taskTransfers.write(choice.filePath,document);});
   ipcMain.handle('star:taskImportPreview',async e=>{managerOnly(e);const choice=await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender),{title:'导入任务定义',filters:[{name:'任务 JSON',extensions:['json']}],properties:['openFile']});if(choice.canceled)return {canceled:true};const owner=e.sender.id;if(!transferOwners.has(owner)){transferOwners.add(owner);e.sender.once('destroyed',()=>{taskTransfers.cancelOwner(owner);transferOwners.delete(owner);});}const preview=await taskTransfers.preview(choice.filePaths[0],owner);if(e.sender.isDestroyed()){taskTransfers.cancel(preview.token,owner);throw new Error('工作台已关闭');}return preview;});
   ipcMain.handle('star:taskImportApply',(e,token)=>{managerOnly(e);return taskTransfers.apply(token,e.sender.id);});
@@ -93,13 +96,14 @@ function registerWorkbench(store,{commands,starting,launches=()=>[]}={}) {
   ipcMain.handle('star:taskRemove',(e,id)=>{managerOnly(e);return tasks.remove(id);});
   ipcMain.handle('star:taskStart',(e,id,profiles)=>{managerOnly(e);return tasks.start(id,profiles);});
   ipcMain.handle('star:taskCancel',(e,id)=>{managerOnly(e);return tasks.cancel(id);});
+  ipcMain.handle('star:taskRetrySave',e=>{managerOnly(e);return tasks.retryResults();});
   ipcMain.handle('star:taskOutput',(e,id,index)=>{managerOnly(e);shell.showItemInFolder(tasks.outputFile(id,index));return true;});
   ipcMain.handle('star:snapshot',(e,knownToken)=>{
-    const running=runtime(),startup=launches(),token=JSON.stringify(startup)+":"+store.revision()+':'+JSON.stringify(running)+(synchronizer.session?':'+JSON.stringify(synchronizer.status()):'');
+    const running=runtime(),startup=launches(),token=JSON.stringify(startup)+":"+store.revision()+':'+tasks.revision()+':'+JSON.stringify(running)+(synchronizer.session?':'+JSON.stringify(synchronizer.status()):'');
     if(knownToken===token)return {unchanged:true,token};
-    return {token,tasks:store.tasks(),taskRuns:store.taskRuns(),synchronizer:synchronizer.status(),profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,startups:startup,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
+    return {token,tasks:store.tasks(),taskRuns:tasks.runs(),synchronizer:synchronizer.status(),profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,startups:startup,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
   });
-  const profileAction=async(e,action,ids=[],patch={})=>{
+  const profileAction=async(e,action,ids=[],patch={},options={})=>{
     if(!Array.isArray(ids)||ids.length>500)throw new Error('每次最多操作 500 个环境');
     const unique=[...new Set(ids)];
     for(const id of unique)require('./profile-backups').assertProfileUnlocked(id);
@@ -109,12 +113,24 @@ function registerWorkbench(store,{commands,starting,launches=()=>[]}={}) {
       const activeIds=new Set(runtime().map(row=>row.id));
       if(['archive','regenerate'].includes(action)&&unique.some(id=>activeIds.has(id)))throw new Error('请先停止所选环境，再更改归档或指纹');
       const validated=action==='update'?validateProfile(patch):null;
+      const tagsMode=options?.tagsMode||'replace';
+      if(action==='update'&&!['replace','append'].includes(tagsMode))throw new Error('标签操作无效，请重新选择');
+      const updates=new Map();
+      if(action==='update')for(const id of unique){
+        const current=store.get(id),next={...validated};
+        if(tagsMode==='append'){
+          if(!validated.tags?.length)throw new Error('填写要添加的标签');
+          next.tags=[...new Set([...(current.tags||[]),...validated.tags])];
+          if(next.tags.length>20)throw new Error(`“${current.name}”添加后超过 20 个标签，请减少新增标签`);
+        }
+        updates.set(id,next);
+      }
       return store.transaction(()=>{
         const results=[];
         for(const id of unique){
           const p=store.get(id);
           if(action==='clone'){const copy=store.clone(id);store.activity('复制环境',copy.name,'复制配置并生成新的稳定指纹');results.push(copy);}
-          else if(action==='update'){results.push(store.update(id,validated));store.activity('更新环境',p.name);}
+          else if(action==='update'){results.push(store.update(id,updates.get(id)));store.activity('更新环境',p.name);}
           else if(action==='regenerate'){store.update(id,{seed:crypto.randomUUID()});store.activity('重新生成指纹',p.name);}
           else {store.update(id,{archived:action==='archive'});store.activity(action==='archive'?'归档环境':'恢复环境',p.name);}
         }
@@ -162,7 +178,7 @@ function registerWorkbench(store,{commands,starting,launches=()=>[]}={}) {
   ipcMain.handle('star:apiRotateToken',e=>{managerOnly(e);return localApi.rotateToken();});
   ipcMain.handle('star:apiDocs',e=>{managerOnly(e);return fs.readFileSync(path.join(__dirname,'../resources/local-api.md'),'utf8');});
   if(localApi.config.enabled)localApi.start().catch(()=>{});
-  app.on('before-quit',()=>{localApi.stop().catch(()=>{});});
+  app.on('will-quit',()=>{localApi.stop().catch(()=>{});});
   ipcMain.handle('star:export',async(e,ids=[])=>{
     const list=store.list().filter(p=>!ids.length||ids.includes(p.id));
     const result=await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender),{title:'导出环境配置',defaultPath:'Star-Browser-profiles.json',filters:[{name:'JSON',extensions:['json']}]});
@@ -254,7 +270,7 @@ function registerWorkbench(store,{commands,starting,launches=()=>[]}={}) {
     return true;
   });
   ipcMain.handle('star:copy',async(e,value)=>{await clipboard.writeText(String(value).slice(0,100000));return true;});
-  app.on('before-quit',()=>store.flush());
+  app.on('before-quit',event=>{if(!event.defaultPrevented)store.flush();});
 
   function bindSession(ses){
     if(ses.__starBound)return;ses.__starBound=true;

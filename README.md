@@ -17,7 +17,7 @@ Star Browser 是面向日常多环境工作的桌面浏览器，支持 **Windows
 
 ## 下载
 
-当前版本：**0.14.0**。
+当前源码版本：**0.14.0**。本轮安装包已在本地构建，尚未上传到 GitHub Release；发布后可从下列版本页面下载。
 
 | 平台 | 架构 | 安装包 |
 | --- | --- | --- |
@@ -28,12 +28,12 @@ macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证�
 
 ## 功能
 
-- **独立浏览环境**：独立会话和数据目录，支持配置导入导出、分组、标签、搜索、置顶、归档与批量操作。
+- **独立浏览环境**：独立会话和数据目录，支持配置导入导出、分组、标签、搜索、置顶、归档与批量操作；批量标签可保留、追加、替换或清空。
 - **代理管理**：支持 HTTP、HTTPS、SOCKS5 和鉴权代理，提供代理库、批量录入、检测、进度显示及取消操作。
 - **指纹配置与检查**：管理语言、时区、屏幕、UA / Client Hints 和手动 WebGL 配置，覆盖页面及 Dedicated / Shared / Service Worker，提供实际差异报告与 BrowserScan / BrowserLeaks 检测入口。
 - **浏览器日常操作**：多标签、固定、静音、休眠与恢复，以及书签、独立历史、下载管理、站点权限和当前标签 DevTools。
-- **本地工作流**：加密环境备份与恢复、扩展管理、窗口同步、本地任务编排、任务导入导出和带密钥的本地 API。
-- **浅色与深色界面**：工作台和浏览器共享主题，深色界面采用分层深蓝配色，网页画布保留正常背景，支持键盘操作与窄窗口布局。
+- **本地工作流**：加密环境备份与恢复、扩展管理、窗口同步、本地任务编排、任务导入导出和带密钥的本地 API；结果保存失败时保留真实结果并支持重试。
+- **浅色与深色界面**：工作台和浏览器共享主题，深色界面采用分层深蓝配色，网页画布保留正常背景，支持键盘操作与窄窗口布局，未保存的工作台编辑也会在系统关窗和退出时受到保护。
 
 具体实现、验证范围及待完善能力见 [功能与范围](macos/docs/capabilities.md)。
 
@@ -62,6 +62,8 @@ npm start
 
 Intel Mac 与 Windows ARM64 提供构建入口，兼容性需要在对应设备上验证。macOS 打包需在 macOS 上执行。
 
+构建后运行 `npm run verify:artifacts`，核对四个发行文件的完整性、实际程序架构、版本和全部运行资源，生成 `SHA256SUMS-0.14.0.txt`。只构建一个平台时，使用 `-- --platform mac` 或 `-- --platform win`；其他架构可再指定 `--arch x64` 或 `--arch arm64`。
+
 ## 验证
 
 ```sh
@@ -71,10 +73,12 @@ npm run test:experience
 npm run test:diagnostics
 npm run test:cookie-workspace
 npm run test:proxy-workspace
+npm run test:batch-profiles
+npm run test:editor-close
 npm run test:e2e
 ```
 
-完成 macOS arm64 打包后，可运行 `npm run test:package` 检查实际打包应用；Windows x64 在 macOS 上可交叉构建，需在 Windows 设备上再完成安装运行检查。测试使用临时用户目录和本地服务，避免读取日常浏览数据；实际结果与各版本证据见 [验证记录](macos/docs/verification.md)。
+在 macOS 或 Windows 的对应主机完成打包后，可运行 `npm run test:package` 检查实际打包应用；Windows x64 在 macOS 上可交叉构建，需在 Windows 设备上再完成安装运行检查。测试使用临时用户目录和本地服务，避免读取日常浏览数据；实际结果与各版本证据见 [验证记录](macos/docs/verification.md)。
 
 ## 能力边界
 
@@ -87,7 +91,7 @@ npm run test:e2e
 - [0.14.0 版本说明](macos/docs/release-0.14.0.md)
 - [功能与实际范围](macos/docs/capabilities.md)
 - [验证记录](macos/docs/verification.md)
-- [工作台设计](macos/docs/workbench-design-0.13.md)
+- [工作台设计](macos/docs/workbench-design-0.14.md)
 - [迭代计划](macos/docs/iteration-plan.md)
 - [工程说明](macos/README.md)
 - [第三方声明](macos/THIRD_PARTY_NOTICES.md)

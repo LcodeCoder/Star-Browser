@@ -164,15 +164,15 @@ class Store extends EventEmitter {
   }
 
   remove(id) {
-    const idx = this._data.profiles.findIndex((p) => p.id === id);
-    if (idx >= 0) {
+    return this.transaction(() => {
+      const idx = this._data.profiles.findIndex((p) => p.id === id);
+      if (idx < 0) return false;
       this._data.profiles.splice(idx, 1);
       this._profilesById.delete(id);
       delete this._data.history[id];
       this._save();
       return true;
-    }
-    return false;
+    });
   }
 
   touchOpened(id) {
@@ -190,9 +190,36 @@ class Store extends EventEmitter {
   }
   tasks() { return this._data.tasks; }
   taskRuns() { return this._data.taskRuns; }
-  saveTask(task) { const existing=this._data.tasks.findIndex(item=>item.id===task.id);if(existing>=0)this._data.tasks[existing]=task;else this._data.tasks.unshift(task);this._save();return task; }
-  removeTask(id) { this._data.tasks=this._data.tasks.filter(item=>item.id!==id);this._save();return true; }
-  saveTaskRun(run) { const index=this._data.taskRuns.findIndex(item=>item.id===run.id);if(index>=0)this._data.taskRuns[index]=run;else this._data.taskRuns.unshift(run);const active=new Set(['queued','starting','running']);const pending=this._data.taskRuns.filter(item=>active.has(item.state));const finished=this._data.taskRuns.filter(item=>!active.has(item.state));this._data.taskRuns=[...pending,...finished.slice(0,Math.max(0,200-pending.length))].sort((a,b)=>b.createdAt-a.createdAt);this._save(); }
+  saveTask(task) {
+    return this.transaction(() => {
+      const record = structuredClone(task);
+      const index = this._data.tasks.findIndex(item => item.id === record.id);
+      if (index >= 0) this._data.tasks[index] = record;
+      else this._data.tasks.unshift(record);
+      this._save();
+      return record;
+    });
+  }
+  removeTask(id) {
+    return this.transaction(() => {
+      this._data.tasks = this._data.tasks.filter(item => item.id !== id);
+      this._save();
+      return true;
+    });
+  }
+  saveTaskRun(run) {
+    return this.transaction(() => {
+      const record = structuredClone(run);
+      const index = this._data.taskRuns.findIndex(item => item.id === record.id);
+      if (index >= 0) this._data.taskRuns[index] = record;
+      else this._data.taskRuns.unshift(record);
+      const active = new Set(['queued', 'starting', 'running']);
+      const pending = this._data.taskRuns.filter(item => active.has(item.state));
+      const finished = this._data.taskRuns.filter(item => !active.has(item.state));
+      this._data.taskRuns = [...pending, ...finished.slice(0, Math.max(0, 200 - pending.length))].sort((a, b) => b.createdAt - a.createdAt);
+      this._save();
+    });
+  }
   listExtensions() { return this._data.extensions; }
   saveExtension(record) { this._data.extensions.push(record); this._save(); }
   removeExtension(id) {
@@ -220,11 +247,14 @@ class Store extends EventEmitter {
   }
   activities() { return this._data.activity; }
   preferences(patch) {
-    if (patch) {
-      for (const key of ["theme","density","searchEngine"]) if (typeof patch[key] === "string") this._data.preferences[key]=patch[key];
+    if (!patch) return this._data.preferences;
+    return this.transaction(() => {
+      for (const key of ["theme", "density", "searchEngine"]) {
+        if (typeof patch[key] === "string") this._data.preferences[key] = patch[key];
+      }
       this._save();
-    }
-    return this._data.preferences;
+      return this._data.preferences;
+    });
   }
   sessionTabs(id, tabs, activeIndex) {
     const p=this.get(id); if (!p) return;
