@@ -245,3 +245,7 @@ GitHub Actions 38361374890 的 macOS 作业成功；Windows 40 项单元检查�
 ## 0.13.1 实际 macOS arm64 安装包
 
 2026-10-13 实际打包并校验完整 ad hoc 签名：12 项安装包检查通过，覆盖 asar 资源、首次脚本、原生日期、实际网页/Worker/CSS、设置、隔离与代理失败。直接启动打包可执行文件的 11 项体验质量、8 项检测闭环检查通过；本机 Chrome 检测新标签也经过实际测试。DMG/ZIP 已生成。GitHub 最新 Windows 的 F12 回归结果独立跟踪，不以本机 macOS 通过代替 Windows 验证。
+
+## 深蓝主题与 Windows 结果
+
+2026-10-13：低饱和深蓝已应用于工作台和全部浏览器工具面。实际源码运行的 11 项体验、8 项检测、11 项工作台/浏览器检查通过，包含真实文字对比度、窄窗、键盘、错误与减少动画；截图保存在 test-results/star-0.13.0。GitHub Actions 38363676529（1ee0168）macOS、Windows 两个作业均成功，Windows 工作台、体验和检测专项及 x64 NSIS/ZIP 构建通过。先前未等待 devtools-closed 的 Windows 回归时序缺口已有新作业验证。

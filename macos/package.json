@@ -1,6 +1,6 @@
 {
   "name": "star-browser",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "private": true,
   "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
