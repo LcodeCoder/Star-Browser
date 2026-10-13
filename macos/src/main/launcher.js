@@ -148,7 +148,7 @@ async function launchProfile(profile, paths, fingerprint) {
   const preferencesFile = path.join(userDataDir, "Default", "Preferences");
   let preferences = {};
   if (fs.existsSync(preferencesFile)) preferences = JSON.parse(fs.readFileSync(preferencesFile, "utf8"));
-  preferences.intl = { ...preferences.intl, accept_languages: fp.languages.join(",") };
+  preferences.intl = { ...preferences.intl, accept_languages: require("./language-settings").languages(fp).join(",") };
   fs.mkdirSync(path.dirname(preferencesFile), { recursive: true });
   fs.writeFileSync(preferencesFile, JSON.stringify(preferences), "utf8");
 

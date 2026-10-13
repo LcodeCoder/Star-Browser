@@ -17,7 +17,7 @@ function metadata(fp,host={platform:process.platform,arch:process.arch,systemVer
  return {brands:[{brand:'Chromium',version:major},{brand:'Google Chrome',version:major},{brand:'Not-A.Brand',version:'99'}],fullVersionList:[{brand:'Chromium',version},{brand:'Google Chrome',version},{brand:'Not-A.Brand',version:'99.0.0.0'}],fullVersion:version,platform,platformVersion,architecture,model:fp.os==='android'?'SM-S918B':'',mobile:fp.os==='android',bitness:hints?.bitness||'64',wow64:hints?.wow64||false};
 }
 async function applyProtocol(send,fp,{metrics=true}={}) {
- await send('Emulation.setUserAgentOverride',{userAgent:fp.userAgent,acceptLanguage:(fp.languages||[fp.language]).join(','),platform:fp.platform,userAgentMetadata:metadata(fp)});
+ await send('Emulation.setUserAgentOverride',{userAgent:fp.userAgent,acceptLanguage:require('./language-settings').languages(fp).join(','),platform:fp.platform,userAgentMetadata:metadata(fp)});
  if(metrics)await send('Emulation.setDeviceMetricsOverride',{width:0,height:0,deviceScaleFactor:fp.devicePixelRatio||1,mobile:fp.os==='android',screenWidth:fp.screen.width,screenHeight:fp.screen.height,dontSetVisibleSize:true});
  await send('Emulation.setTimezoneOverride',{timezoneId:fp.timezone});
  await send('Emulation.setLocaleOverride',{locale:fp.language}).catch(()=>{});

@@ -208,3 +208,16 @@ Windows x64 NSIS/ZIP 交叉构建成功；验证 PE 架构、asar 版本与主�
 2026-10-12（America/Los_Angeles）：远程工作流 38356480776 的 macOS 单元、工作台和体验检查通过；Windows 单元测试在真实 runner 发现备份临时文件 fsync 返回 EPERM。原因是 Windows FlushFileBuffers 要求可写文件句柄。同步前以 r+ 打开现有文件，保留已写入的归档内容，不吞掉落盘错误。
 
 修复后本机两项备份专项通过，验证大文件往返、认证、错误密码、篡改清理、已有目录保护与路径限制；Windows 的实际复验由下一次推送触发，不提前记为通过。
+
+
+## 语言完整列表与公网复测
+
+2026-10-12（America/Los_Angeles）：39 项单元、17 项指纹专项通过（另 2 项后台上下文边界观测保留）。新增真实首次文档 HTTP、fetch、网页首脚本与 Dedicated Worker 语言列表验证；本机 Chrome 的 HTTP、网页与 Worker 同样检查。
+
+- HTTP Accept-Language 根据完整偏好列表生成权重；CDP 和 Chrome 偏好传入无权重的语言列表，避免 q 参数污染 navigator.languages。
+- 实际 Star 临时环境公网复测 BrowserScan 显示 100%，语言为 zh-CN / en-US，请求头为 zh-CN,en-US;q=0.9，网页与出口时区均为 Asia/Shanghai。该分数仅是本次站点观测，不代表所有网站或网络能力通过。
+- BrowserLeaks 的 JavaScript、Client Hints、WebRTC、Canvas、WebGL 和 TLS 页面均加载并保存实际读数。WebRTC No Leak；WebGPU、字体、TLS、DNS 仍需按实际原生边界判断。BrowserScan 的内部配置检查受后台加载状态阻挡，另行修复。
+- 新增手动 npm run test:external：使用独立临时环境与真实网络，逐页保存读数和截图，明确区分 observed、blocked、unavailable，不加入 CI 的硬分数断言。含出口数据的报告保留在本机忽略目录，不推送。
+- GitHub 工作流 38357743980（46e76c3）两平台成功：macOS / Windows 单元、工作台与体验专项通过，Windows x64 NSIS / ZIP 安装包构建成功。Windows 此处是 GitHub 实际 runner，尚无用户设备上安装验收。
+
+公网证据：test-results/star-0.13.0/external/；指纹：test-results/fingerprint.json。

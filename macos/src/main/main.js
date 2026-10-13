@@ -86,10 +86,10 @@ const FP_CORE_SRC = fs.readFileSync(
       _sess.webRequest.onHeadersReceived((details,callback)=>{try{hints.receive(details.url,details.responseHeaders);}finally{callback({responseHeaders:details.responseHeaders});}});
       _sess.webRequest.onBeforeSendHeaders((details, callback) => {
         try {
-          const L = _sess.__tfbLang || "en-US";
           const hdrs = details.requestHeaders || {};
-          hdrs["Accept-Language"] = L + "," + L.split("-")[0] + ";q=0.9";
           const fp=_sess.__tfbFp;
+          for (const key of Object.keys(hdrs)) if (key.toLowerCase() === 'accept-language') delete hdrs[key];
+          hdrs["Accept-Language"] = require('./language-settings').acceptLanguage(fp || {language:_sess.__tfbLang || 'en-US'});
           if(fp){const meta=fingerprintMetadata(fp);hdrs["User-Agent"]=fp.userAgent;for(const key of Object.keys(hdrs)){const lower=key.toLowerCase();if(lower==='sec-ch-ua')hdrs[key]=meta.brands.map(b=>`"${b.brand}";v="${b.version}"`).join(', ');if(lower==='sec-ch-ua-platform')hdrs[key]=JSON.stringify(meta.platform);if(lower==='sec-ch-ua-mobile')hdrs[key]=meta.mobile?'?1':'?0';}}
 
           hints.apply(details.url,hdrs,fp);

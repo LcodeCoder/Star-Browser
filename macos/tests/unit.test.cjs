@@ -342,3 +342,11 @@ test('地域查询拒绝 HTTP 错误、无效 JSON 与超大响应，并保留�
   assert.match((await requestGeoJSON(provider(200, '123456789'),'https://geo.invalid',{maxBytes:4})).error,/过大/);
   assert.deepEqual(await requestGeoJSON(provider(200, '{"ip":"8.8.8.8","timezone":"Asia/Tokyo"}'),'https://geo.invalid'),{ip:'8.8.8.8',timezone:'Asia/Tokyo'});
 });
+
+
+test('HTTP 语言列表保留完整偏好顺序，单语言不生成重复项',()=>{
+ const {languages,acceptLanguage}=require('../src/main/language-settings');
+ assert.equal(acceptLanguage({languages:['zh-CN','en-US']}),'zh-CN,en-US;q=0.9');
+ assert.equal(acceptLanguage({language:'en-US'}),'en-US');
+ assert.deepEqual(languages({languages:['fr-FR','en-US','fr-FR']}),['fr-FR','en-US']);
+});
