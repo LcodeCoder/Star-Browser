@@ -1,0 +1,71 @@
+diff --git a/content/browser/renderer_host/render_process_host_impl.cc b/content/browser/renderer_host/render_process_host_impl.cc
+--- a/content/browser/renderer_host/render_process_host_impl.cc
++++ b/content/browser/renderer_host/render_process_host_impl.cc
+@@ -3848,6 +3848,8 @@
+   // Propagate the following switches to the renderer command line (along
+   // with any associated values) if present in the browser command line.
+   static const char* const kSwitchNames[] = {
++      // One native policy for pages, frames and every worker process.
++      "star-fingerprint-hardware",
+       switches::kDisableInProcessStackTraces,
+       sandbox::policy::switches::kDisableLandlockSandbox,
+       sandbox::policy::switches::kDisableSeccompFilterSandbox,
+diff --git a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+--- a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
++++ b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+@@ -5,10 +5,14 @@
+ #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
+
+ #include "base/system/sys_info.h"
++#include "third_party/blink/public/common/fingerprinting/star_hardware_fingerprint.h"
+
+ namespace blink {
+
+ unsigned NavigatorConcurrentHardware::hardwareConcurrency() const {
++  if (const auto& policy = star::GetHardwarePolicy()) {
++    return policy->concurrency;
++  }
+   return static_cast<unsigned>(base::SysInfo::NumberOfProcessors());
+ }
+
+diff --git a/third_party/blink/common/device_memory/approximated_device_memory.cc b/third_party/blink/common/device_memory/approximated_device_memory.cc
+--- a/third_party/blink/common/device_memory/approximated_device_memory.cc
++++ b/third_party/blink/common/device_memory/approximated_device_memory.cc
+@@ -9,6 +9,7 @@
+ #include "base/feature_list.h"
+ #include "base/system/sys_info.h"
+ #include "third_party/blink/public/common/features.h"
++#include "third_party/blink/public/common/fingerprinting/star_hardware_fingerprint.h"
+
+ namespace blink {
+
+@@ -27,6 +28,10 @@
+
+ // static
+ float ApproximatedDeviceMemory::GetApproximatedDeviceMemory() {
++  // This is also the source of the browser's Device-Memory Client Hints.
++  if (const auto& policy = star::GetHardwarePolicy()) {
++    return policy->memory_gb;
++  }
+   return approximated_device_memory_gb_;
+ }
+
+diff --git a/third_party/blink/public/common/BUILD.gn b/third_party/blink/public/common/BUILD.gn
+--- a/third_party/blink/public/common/BUILD.gn
++++ b/third_party/blink/public/common/BUILD.gn
+@@ -148,6 +148,8 @@
+     "fenced_frame/redacted_fenced_frame_config.h",
+     "fenced_frame/redacted_fenced_frame_config_mojom_traits.h",
+     "fetch/fetch_api_request_headers_map.h",
++    "fingerprinting/star_hardware_fingerprint.h",
++    "fingerprinting/star_hardware_policy.h",
+     "fetch/fetch_api_request_headers_mojom_traits.h",
+     "fingerprinting_protection/noise_token.h",
+     "fingerprinting_protection/noise_token_mojom_traits.h",
+diff --git a/third_party/blink/common/BUILD.gn b/third_party/blink/common/BUILD.gn
+--- a/third_party/blink/common/BUILD.gn
++++ b/third_party/blink/common/BUILD.gn
+@@ -388,2 +388,3 @@
+     "device_memory/approximated_device_memory_unittest.cc",
++    "fingerprinting/star_hardware_policy_unittest.cc",
+     "frame/delegated_capability_request_token_unittest.cc",

@@ -268,12 +268,11 @@ class Store extends EventEmitter {
 
   addBookmark(bm) {
     if (!this._data.bookmarks) this._data.bookmarks = [];
-    const url = (bm && bm.url) || "";
-    if (!url) return null;
+    const validated = require("./bookmark-validation").validateBookmark(bm);
     const item = {
       id: crypto.randomUUID(),
-      title: (bm && bm.title) || url,
-      url,
+      title: validated.title,
+      url: validated.url,
       source: "user",
       createdAt: Date.now(),
     };
@@ -325,8 +324,9 @@ class Store extends EventEmitter {
     if (!this._data.bookmarks) return null;
     const b = this._data.bookmarks.find((x) => x.id === id);
     if (!b) return null;
-    if (patch && patch.title !== undefined) b.title = patch.title;
-    if (patch && patch.url !== undefined) b.url = patch.url;
+    const validated = require("./bookmark-validation").validateBookmark({...b,...patch});
+    b.title = validated.title;
+    b.url = validated.url;
     b.updatedAt = Date.now();
     this._save();
     return b;

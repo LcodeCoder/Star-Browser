@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "version": "155.0.8059.40",
+  "repository": "https://chromium.googlesource.com/chromium/src.git",
+  "mirror": "https://github.com/chromium/chromium",
+  "commit": "cfaadc5a132d78e1828635aa8405a499f3e14864",
+  "abi": "star-hardware-v1",
+  "implementedScope": [
+    "hardwareConcurrency",
+    "deviceMemory",
+    "deviceMemoryHeaders"
+  ],
+  "p0Complete": false,
+  "upstreamFiles": [
+    {
+      "path": "chrome/VERSION",
+      "sha256": "7cc970eb1fa57c803b4c56eb5d2022dab3caa7ac8b9b35655e9a98f0b3b78e9a",
+      "size": 38
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "368cca1106be99d39ecd32a38d8305585d802a475effb66380b91ffc9bcf709b",
+      "size": 1536
+    },
+    {
+      "path": "content/browser/renderer_host/render_process_host_impl.cc",
+      "sha256": "6d9b90abeb902d47259d5baa78c87672be140729fc86e53481b33de6221f4725",
+      "size": 257832
+    },
+    {
+      "path": "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc",
+      "sha256": "7b689c17f7007b7e342412cb27165111fe6b5db8672ac27b8b9fc1ea0f432928",
+      "size": 442
+    },
+    {
+      "path": "third_party/blink/common/device_memory/approximated_device_memory.cc",
+      "sha256": "2a3bd1c5250808355b6eea60fb13f15db565b8eba0a78f7fd0ea3ad718da4d8a",
+      "size": 2910
+    },
+    {
+      "path": "third_party/blink/public/common/BUILD.gn",
+      "sha256": "4ac2f2eca3762d426cd06f54bc2cf03a5e6f899097ca5af52da9e6b7d04ecd7f",
+      "size": 15495
+    },
+    {
+      "path": "third_party/blink/common/BUILD.gn",
+      "sha256": "e8d6c078a72041cc615f52b613ae94dca8361604df3a44cd4f7385bb03ac2752",
+      "size": 20469
+    },
+    {
+      "path": "content/browser/renderer_host/render_widget_host_view_base.cc",
+      "sha256": "9f812ebbc35fa1e715c5063fde6f4334076bb0b7c63776c7eca1897360a040c1",
+      "size": 42123
+    },
+    {
+      "path": "content/browser/BUILD.gn",
+      "sha256": "0281cdd6eb08b8ac97423aff9070131d24a0959bda072ef593f2ebbf301f0487",
+      "size": 161162
+    },
+    {
+      "path": "content/test/BUILD.gn",
+      "sha256": "dd38e7a610aeb8eb8b2e4496c0916e4f5e839b40d9b1b5b929ac785f0d82963d",
+      "size": 165298
+    },
+    {
+      "path": "ui/display/screen_info.h",
+      "sha256": "950176f7c5528b05aa8bdceff521e9237708adb360fbe0f6e776c6bdbf6d889d",
+      "size": 4906
+    },
+    {
+      "path": "ui/display/screen_infos.h",
+      "sha256": "44899eadd71e011112ec6cfdc6acd12e55717b55ed76d061b1f139835aa4f16b",
+      "size": 1422
+    }
+  ],
+  "overlays": [
+    {
+      "source": "src/star_hardware_policy.h",
+      "target": "third_party/blink/public/common/fingerprinting/star_hardware_policy.h",
+      "sha256": "d9e37a0b67bd1c6884f4fc0f601a72f2b1a2bb5c442ce2dc312192d2793ded4f"
+    },
+    {
+      "source": "src/star_hardware_fingerprint.h",
+      "target": "third_party/blink/public/common/fingerprinting/star_hardware_fingerprint.h",
+      "sha256": "74116780581fbd4c91b474f2e05e44d84ecf54ed2e470a28eb70e6a6c5dcc704"
+    },
+    {
+      "source": "src/star_hardware_policy_unittest.cc",
+      "target": "third_party/blink/common/fingerprinting/star_hardware_policy_unittest.cc",
+      "sha256": "c0946a53e9226460f800ee18ea9c08d114660dd3586f2cd4f1d5893afcc32e9d"
+    },
+    {
+      "source": "src/star_display_policy.h",
+      "target": "content/browser/renderer_host/star_display_policy.h",
+      "sha256": "20c303ab3429fda7787dc090bda9d6fee930520f6ecf5635bc6653e6197d08bc"
+    },
+    {
+      "source": "src/star_display_fingerprint.h",
+      "target": "content/browser/renderer_host/star_display_fingerprint.h",
+      "sha256": "89ba475deae28669cbeaff84d61c3f2c8dd54f989b385ee826704b32eddbd493"
+    },
+    {
+      "source": "src/star_display_policy_unittest.cc",
+      "target": "content/browser/renderer_host/star_display_policy_unittest.cc",
+      "sha256": "4c5cb9981f6bb3c96f4b04712bec4511ac019060d80c6a7591adb2ec3d15cc9c"
+    }
+  ],
+  "patches": [
+    {
+      "path": "patches/0001-native-hardware-policy.patch",
+      "sha256": "aa1cd1165f67ca2e6f4d7861e54befb5585ec183d6c1d8d7c4dd1bf57d1ff0b6"
+    },
+    {
+      "path": "patches/0002-native-display-policy.patch",
+      "sha256": "bee98bed7928f696ed5d2c793a9f8d762a80cd0f896c72e75397a62ed29e6fd5"
+    }
+  ],
+  "preparedDisplayScope": [
+    "screenDimensions",
+    "screenAvailableDimensions",
+    "screenColorDepth",
+    "screenOrientation"
+  ],
+  "displayRuntimeAccepted": false
+}

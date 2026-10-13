@@ -546,7 +546,7 @@ function generateFingerprint(seed, opts = {}) {
   result.noise = Object.assign({canvas:false,audio:false,webgl:false,clientRects:false},opts.fingerprint?.noise||{});
   result.protocolManaged = true;
   for(const key of ['audioSampleRate','fonts','mediaDevices','speechVoices','plugins'])delete result[key];
-  result.nativeSignals=Object.keys(result.noise).filter(key=>!result.noise[key]).concat(['fonts','mediaDevices','speechVoices','plugins','audioSampleRate','webgpu','sharedWorker','serviceWorker','tls','dns']);
+  result.nativeSignals=Object.keys(result.noise).filter(key=>!result.noise[key]).concat(['fonts','mediaDevices','speechVoices','plugins','audioSampleRate','webgpu','tls','dns']);
   return result;
 }
 

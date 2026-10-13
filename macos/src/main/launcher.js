@@ -4,14 +4,15 @@
  * 流程：
  *  1. 根据 profile.seed 生成稳定指纹
  *  2. 为该环境准备独立 user-data-dir（天然隔离 cookie/localStorage/cache）
- *  3. 生成该环境专属的「指纹伪装扩展」（把指纹参数 + 代理凭据写进 config.js）
+ *  3. 生成该环境专属的「指纹伪装扩展」（页面配置与后台代理凭据分别写入文件）
  *  4. 用命令行参数启动本地 Chrome / 内置 Chromium 内核，加载扩展
  */
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { spawn, execFileSync } = require("child_process");
-const { applyProtocol } = require("./fingerprint-protocol");
+const { applyProtocol, metadata } = require("./fingerprint-protocol");
+const { fingerprintSource } = require("./fingerprint-runtime");
 const versionCache = new Map();
 function chromeVersion(chrome) {
  const stamp=fs.statSync(chrome).mtimeMs;const cached=versionCache.get(chrome);if(cached?.stamp===stamp)return cached.version;
@@ -69,11 +70,11 @@ function findChrome() {
 function prepareExtension(baseDir, extTemplateDir, fingerprint, proxy) {
   const extDir = path.join(baseDir, "fp-extension");
   fs.mkdirSync(extDir, { recursive: true });
-  for (const f of fs.readdirSync(extTemplateDir)) {
+  for (const f of ["manifest.json", "background.js"]) {
     fs.copyFileSync(path.join(extTemplateDir, f), path.join(extDir, f));
   }
   const config = { fingerprint, proxy: proxy || null };
-  const js = "window.__FP_CONFIG__ = " + JSON.stringify(config) + ";";
+  const js = fingerprintSource({...fingerprint,userAgentMetadata:metadata(fingerprint)});
   fs.writeFileSync(path.join(extDir, "config.js"), js, "utf-8");
   // background 用（service worker 无法读 window，单独存一份 JSON 可 fetch）
   fs.writeFileSync(
@@ -90,22 +91,27 @@ function prepareExtension(baseDir, extTemplateDir, fingerprint, proxy) {
  * @param {object} paths       { rootDir 存放各环境数据的根目录, extTemplateDir 扩展模板目录 }
  * @param {object} [fingerprint] 可选：已对齐（时区/语言跟随出口 IP 或手动指定）的指纹；缺省按国家默认生成
  */
-async function launchProfile(profile, paths, fingerprint) {
-  const chrome = findChrome();
+async function launchProfile(profile, paths, fingerprint, {onStage = () => {}} = {}) {
+  onStage("kernel");
+  const nativeKernel = await require("./native-kernel").resolveNativeKernel();
+  const chrome = nativeKernel?.executable || findChrome();
   if (!chrome) {
     throw new Error(
       "未找到本机 Chrome/Edge。可使用环境列表中的“启动”打开内置浏览器。",
     );
   }
   const version = chromeVersion(chrome);
+  if (nativeKernel && version !== nativeKernel.version) throw new Error("原生内核版本与验收报告不一致，请重新验收");
   const fp = generateFingerprint(profile.seed,{os:profile.os,country:profile.country,fingerprint:profile.fingerprint,chromeVersion:version,timezone:fingerprint?.timezone||profile.timezone,language:fingerprint?.language||profile.language});
   fp.webrtc = profile.webrtc || 'disable';
+  fp.nativeHardware = !!nativeKernel;
   const startUrl=profile.startUrl==='about:home'?'chrome://newtab':profile.startUrl||'about:blank';
 
   const baseDir = path.join(paths.rootDir, profile.id);
   const userDataDir = path.join(baseDir, "user-data");
   fs.mkdirSync(userDataDir, { recursive: true });
 
+  onStage("extensions");
   const extDir = prepareExtension(
     baseDir,
     paths.extTemplateDir,
@@ -113,7 +119,7 @@ async function launchProfile(profile, paths, fingerprint) {
     profile.proxy,
   );
 
-  const pageSource=fs.readFileSync(path.join(paths.extTemplateDir,'fp-core.js'),'utf8')+';installFingerprint('+JSON.stringify(fp)+');';
+  const pageSource=fingerprintSource({...fp,userAgentMetadata:metadata(fp)});
   const args = [
     `--user-data-dir=${userDataDir}`,
     "--remote-debugging-pipe",
@@ -121,12 +127,15 @@ async function launchProfile(profile, paths, fingerprint) {
     `--lang=${fp.language}`,
     `--user-agent=${fp.userAgent}`,
     `--window-size=${fp.screen.width},${fp.screen.height - 100}`,
+    `--force-device-scale-factor=${fp.devicePixelRatio || 1}`,
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-blink-features=AutomationControlled",
     "--disable-features=Translate,MediaRouter",
     "--force-webrtc-ip-handling-policy=default_public_interface_only",
   ];
+
+  if (nativeKernel) args.push(...require("./native-kernel").hardwareArguments(fp));
 
   // 代理：Chromium 不支持「带账号密码的 SOCKS5」，凭据会被静默丢弃 -> 走本地无鉴权 HTTP 网关（与内置浏览器同套方案）；
   // HTTP 代理可直接在 --proxy-server 里带凭据；无代理则不传。
@@ -158,25 +167,71 @@ async function launchProfile(profile, paths, fingerprint) {
     return { pid: existing.child.pid, chrome, fingerprint: existing.fingerprint, userDataDir, extensionId: existing.extensionId };
   }
   args.push("about:blank");
+  onStage("opening");
   const child = spawn(chrome, args, { detached: true, stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
   let stderr = "";
   child.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-3000); });
   const pipe = new CdpPipe(child);
-  const running = { child, pipe, fingerprint: fp, userDataDir };
+  const running = { child, pipe, fingerprint: fp, userDataDir, nativeKernel: nativeKernel ? {version:nativeKernel.version,abi:nativeKernel.abi,scope:nativeKernel.scope,sourceCommit:nativeKernel.sourceCommit,p0Complete:false} : null };
   launchedBrowsers.set(profile.id, running);
   child.once("exit", () => { if (launchedBrowsers.get(profile.id) === running) launchedBrowsers.delete(profile.id); });
   try {
-    const pageSessions=new Map();running.pageSessions=pageSessions;
+    onStage("protocol");
+    const pageSessions=new Map();running.pageSessions=pageSessions;running.targetSessions=new Map();running.targetErrors=[];running.networkObservers=new Map();
+    const record=(info,error)=>{running.targetErrors.push({type:info.type,error:error.message});running.targetErrors.splice(0,Math.max(0,running.targetErrors.length-20));};
+    const configureWorker=target=>{
+      const previous=target.ready;target.configuring=true;
+      const job=(async()=>{
+        if(previous)await previous.catch(()=>{});
+        const result=await require('./fingerprint-targets').configureTarget((method,params)=>pipe.send(method,params,target.sessionId),fp,target.targetInfo.type,pageSource,{protocolManaged:target.protocolManaged});
+        target.protocolManaged=result.protocolManaged;
+      })();
+      target.ready=job;job.catch(error=>record(target.targetInfo,error)).finally(()=>{if(target.ready===job)target.configuring=false;});
+    };
     pipe.on('message',message=>{
-      if(message.method==='Target.attachedToTarget'&&message.params.targetInfo.type==='page'){
+      running.networkObservers.get(message.sessionId)?.record(message.method,message.params);
+      if(message.method==='Target.attachedToTarget'){
         const {sessionId,targetInfo}=message.params;
-        const ready=applyProtocol((method,params)=>pipe.send(method,params,sessionId),fp).then(()=>pipe.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:require('./fingerprint-targets').FILTER},sessionId)).finally(()=>pipe.send('Runtime.runIfWaitingForDebugger',{},sessionId).catch(()=>{}));
-        ready.catch(()=>{});pageSessions.set(targetInfo.targetId,{sessionId,ready});
+        if(!require('./fingerprint-targets').isWebsiteTarget(targetInfo)){
+          pipe.send('Runtime.runIfWaitingForDebugger',{},sessionId).catch(()=>{});return;
+        }
+        const send=(method,params)=>pipe.send(method,params,sessionId);
+        if(targetInfo.type==='page'){
+          const networkObserver=new (require('./network-fingerprint-observer').NetworkFingerprintObserver)();
+          running.networkObservers.set(sessionId,networkObserver);
+          const ready=(async()=>{
+            try{
+              await send('Page.enable');
+              const frame=await send('Page.getFrameTree');networkObserver.setMainFrame(frame.frameTree.frame.id);
+              await send('Network.enable');await applyProtocol(send,fp);
+              await send('Page.addScriptToEvaluateOnNewDocument',{source:pageSource,runImmediately:true});
+              await send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:require('./fingerprint-targets').FILTER});
+            }finally{await send('Runtime.runIfWaitingForDebugger',{}).catch(()=>{});}
+          })();
+          ready.catch(error=>record(targetInfo,error));pageSessions.set(targetInfo.targetId,{sessionId,ready,networkObserver});
+        }else{
+          const target={sessionId,targetInfo};running.targetSessions.set(sessionId,target);configureWorker(target);
+        }
       }
-      if(message.method==='Target.attachedToTarget'&&message.params.targetInfo.type!=='page'){const {sessionId,targetInfo}=message.params;require('./fingerprint-targets').configureTarget((method,params)=>pipe.send(method,params,sessionId),fp,targetInfo.type,pageSource).catch(error=>{running.targetErrors||=[];running.targetErrors.push({type:targetInfo.type,error:error.message});});}
-      if(message.method==='Target.detachedFromTarget')for(const [id,item] of pageSessions)if(item.sessionId===message.params.sessionId)pageSessions.delete(id);
+      const worker=running.targetSessions.get(message.sessionId);
+      if(worker&&message.method==='Runtime.executionContextsCleared')worker.active=false;
+      if(worker&&message.method==='Runtime.executionContextCreated'){worker.active=true;worker.contextId=message.params.context.id;}
+      if(worker&&message.method==='Runtime.executionContextDestroyed'&&message.params.executionContextId===worker.contextId){worker.active=false;worker.needsRestart=worker.targetInfo.type!=='iframe';}
+      if(worker&&worker.targetInfo.type!=='iframe'&&message.method==='Runtime.executionContextsCleared'&&!worker.configuring)worker.needsRestart=true;
+      if(worker&&message.method==='Runtime.executionContextCreated'&&worker.needsRestart&&!worker.configuring){worker.needsRestart=false;configureWorker(worker);}
+      if(message.method==='Target.targetDestroyed')for(const [sessionId,target] of running.targetSessions)if(target.targetInfo.targetId===message.params.targetId)running.targetSessions.delete(sessionId);
+      if(message.method==='Page.frameNavigated'&&!message.params.frame.parentId)for(const target of running.targetSessions.values())if(target.active!==false&&target.targetInfo.type!=='iframe')configureWorker(target);
+      if(message.method==='Target.targetInfoChanged')for(const target of running.targetSessions.values())if(target.targetInfo.targetId===message.params.targetInfo.targetId)target.targetInfo=message.params.targetInfo;
+      if(message.method==='Target.detachedFromTarget'){
+        let closedPage=false;
+        running.networkObservers.delete(message.params.sessionId);
+        for(const [id,item] of pageSessions)if(item.sessionId===message.params.sessionId){pageSessions.delete(id);closedPage=true;}
+        running.targetSessions.delete(message.params.sessionId);
+        if(closedPage)for(const target of running.targetSessions.values())if(target.active!==false&&target.targetInfo.type!=='iframe')configureWorker(target);
+      }
     });
-    await pipe.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:[{type:'page'},{type:'worker'},{type:'shared_worker'},{type:'iframe'},{exclude:true}]});
+    await pipe.send('Target.setDiscoverTargets',{discover:true});
+    await pipe.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:require('./fingerprint-targets').BROWSER_FILTER});
     const runtimeVersion=await pipe.send("Browser.getVersion");
     if(!runtimeVersion.product.endsWith("/"+version))throw new Error("本机 Chrome 版本在启动时发生变化，请重试");
     // Chrome 137 起不再接受正式版的 --load-extension；使用官方本地管道 API。

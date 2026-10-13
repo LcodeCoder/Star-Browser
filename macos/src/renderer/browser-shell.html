@@ -61,15 +61,23 @@
   </div>
 
   <!-- 收藏当前页的小气泡（改名 / 改网址 / 删除） -->
-  <div id="starPop" class="star-pop" hidden>
-    <div class="star-pop-row">
-      <input id="starTitle" type="text" placeholder="名称" />
-      <input id="starUrl" type="text" placeholder="网址" />
-    </div>
-    <div class="star-pop-actions">
-      <button class="btn ghost" id="starRemove" type="button" style="display:none;">删除</button>
-      <button class="btn primary" id="starDone" type="button">完成</button>
-    </div>
+  <div id="starPop" class="star-pop" role="dialog" aria-labelledby="starPopTitle" hidden>
+    <h2 id="starPopTitle">编辑书签</h2>
+    <form id="starForm" novalidate>
+      <fieldset id="starFields" class="star-pop-row">
+        <label for="starTitle">名称</label><input id="starTitle" type="text" maxlength="512" autocomplete="off" />
+        <label for="starUrl">网址</label><input id="starUrl" type="url" maxlength="4096" spellcheck="false" autocomplete="off" placeholder="https://example.com" />
+      </fieldset>
+      <p id="starError" class="star-pop-error" role="alert" hidden></p>
+      <div id="starDiscard" class="star-pop-discard" hidden>
+        <p>修改尚未保存</p><div><button class="btn" id="starContinue" type="button">继续编辑</button><button class="btn ghost" id="starAbandon" type="button">放弃更改</button></div>
+      </div>
+      <div id="starActions" class="star-pop-actions">
+        <button class="btn ghost" id="starRemove" type="button">删除</button>
+        <span></span><button class="btn ghost" id="starCancel" type="button">取消</button>
+        <button class="btn primary" id="starDone" type="submit">保存</button>
+      </div>
+    </form>
   </div>
 
   <div id="fatal" class="fatal" role="alert" hidden><div class="fatal-copy"><strong>页面暂时无法打开</strong><span id="fatalMessage"></span></div><button class="btn" id="fatalRetry">重新加载</button><button class="tb" id="fatalClose" title="关闭提示"></button></div>
@@ -106,10 +114,13 @@
         <div class="settings-data-actions"><button id="s-cookie-out" class="btn">备份 Cookie</button><button id="s-cookie-in" class="btn">恢复 Cookie</button><button id="s-clear" class="btn">清除浏览数据</button></div>
         <label class="chk"><input id="s-regen" type="checkbox" /> 保存时重新生成指纹</label><p class="hint">已有网站可能会把它识别为新设备。</p>
       </details>
-      <div id="settingsError" class="settings-error" role="alert" hidden></div>
+      <div id="settingsError" class="settings-error" role="alert" tabindex="-1" hidden></div>
       <div class="ver-line"><span id="s-version">—</span></div>
     </div>
-    <div class="settings-footer"><button id="s-cancel" class="btn">取消</button><button id="s-save" class="btn primary">保存并应用</button></div>
+    <div class="settings-footer">
+      <div id="settingsDiscard" class="settings-discard" hidden><p role="status">有尚未保存的修改。放弃后会恢复已保存的配置。</p><div><button id="s-abandon" class="btn">放弃更改</button><button id="s-continue" class="btn primary">继续编辑</button></div></div>
+      <div id="settingsSaveActions" class="settings-save-actions"><button id="s-cancel" class="btn">取消</button><button id="s-save" class="btn primary">保存并应用</button></div>
+    </div>
   </div>
 
   <div id="launcher" class="panel launcher" hidden>
@@ -189,10 +200,12 @@
   <section id="historyPanel" class="shell-popover" aria-label="此环境的历史记录" hidden><div class="panel-head">历史记录<button class="tb" id="historyClose" title="关闭历史记录"></button></div><input id="historySearch" aria-label="搜索历史记录" placeholder="搜索网站或标题" /><div id="historyList" class="history-list"></div><div class="popover-footer"><span>仅保存此环境的访问记录</span><button id="historyClear" class="btn ghost">清除记录</button></div></section>
   <section id="tabSearchPanel" class="shell-popover" aria-label="标签页搜索" hidden><div class="panel-head">打开的标签页<button class="tb" id="tabSearchClose" title="关闭标签页搜索"></button></div><input id="tabSearchInput" aria-label="搜索打开的标签页" placeholder="搜索标题或网址" /><div id="tabSearchList" class="history-list"></div></section>
   <section id="diagnosticPanel" class="shell-popover diagnostic-panel" aria-label="检测此环境" hidden><div class="panel-head">检测此环境<button class="tb" id="diagnosticClose" title="关闭环境检测"></button></div><p class="diagnostic-intro">在此环境的新标签打开检测网站。</p><input id="diagnosticSearch" type="search" aria-label="搜索检测项目" placeholder="搜索语言、网络或图形…" /><p id="diagnosticOffline" class="diagnostic-offline" role="status" hidden>当前离线，连接网络后再检测。</p><div id="diagnosticList" class="diagnostic-list" aria-live="polite"></div><div class="popover-footer"><span>结果以检测网站的实际读数为准</span></div></section>
-  <section id="browserMenu" class="shell-popover" aria-label="浏览器菜单" hidden><button class="menu-action" data-command="devtools">开发者工具 <kbd>F12</kbd></button><button class="menu-action" data-command="diagnostics">检测此环境</button><button class="menu-action" id="openProxyChecks">批量代理检测</button><button class="menu-action" id="openWorkspace">返回工作台</button><button class="menu-action" id="tabActionsBtn">标签页操作<kbd>⇧F10</kbd></button><button class="menu-action" data-command="restore-tab">恢复关闭的标签<kbd>⌘⇧T</kbd></button><div class="menu-separator"></div><button class="menu-action" data-command="find">在页面中查找<kbd>⌘F</kbd></button><button class="menu-action" data-command="history">历史记录<kbd>⌘Y</kbd></button><button class="menu-action" id="openDownloads">下载内容</button><div class="zoom-row"><span>缩放</span><button data-command="zoom-out" aria-label="缩小页面">−</button><button id="zoomValue" data-command="zoom-reset" aria-label="重置页面缩放">100%</button><button data-command="zoom-in" aria-label="放大页面">+</button></div><div class="menu-separator"></div><button class="menu-action" id="themeToggle">切换浅色 / 深色</button></section>
+  <section id="browserMenu" class="shell-popover" role="menu" aria-label="浏览器菜单" hidden><button class="menu-action" data-command="devtools">开发者工具 <kbd>F12</kbd></button><button class="menu-action" data-command="diagnostics">检测此环境</button><button class="menu-action" id="openProxyChecks">批量代理检测</button><button class="menu-action" id="openWorkspace">返回工作台</button><button class="menu-action" id="tabActionsBtn">标签页操作<kbd>⇧F10</kbd></button><button class="menu-action" data-command="restore-tab">恢复关闭的标签<kbd>⌘⇧T</kbd></button><div class="menu-separator"></div><button class="menu-action" data-command="find">在页面中查找<kbd>⌘F</kbd></button><button class="menu-action" data-command="bookmark">收藏当前页<kbd>⌘D</kbd></button><button class="menu-action" id="openBookmarks">收藏夹</button><button class="menu-action" data-command="history">历史记录<kbd>⌘Y</kbd></button><button class="menu-action" id="openDownloads">下载内容</button><div class="zoom-row"><span>缩放</span><button data-command="zoom-out" aria-label="缩小页面">−</button><button id="zoomValue" data-command="zoom-reset" aria-label="重置页面缩放">100%</button><button data-command="zoom-in" aria-label="放大页面">+</button></div><div class="menu-separator"></div><button class="menu-action" id="themeToggle">切换浅色 / 深色</button></section>
 
   <script src="browser-tabs.js"></script>
   <script src="browser-experience.js"></script>
+  <script src="bookmark-validation.js"></script>
+  <script src="settings-validation.js"></script>
   <script src="browser-shell.js"></script>
 <script src="browser-settings.js"></script>
   <script src="browser-network.js"></script>

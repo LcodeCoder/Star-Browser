@@ -1,3 +1,4 @@
+import {LaunchBadge, latestStartup} from "./launch-status";
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Command } from "cmdk";
@@ -26,6 +27,8 @@ class ErrorBoundary extends React.Component {
 function App() {
   const [snapshot, setSnapshot] = useState(null), [loadError, setLoadError] = useState(""), [page, setPage] = useState("environments"), [filter, setFilter] = useState("all"), [group, setGroup] = useState(""), [query, setQuery] = useState(""), [tag, setTag] = useState(""), [sort, setSort] = useState("recent"), [selected, setSelected] = useState(/* @__PURE__ */ new Set()), [detail, setDetail] = useState(null), [editor, setEditor] = useState(void 0), [toast, setToast] = useState(null), [confirmState, setConfirm] = useState(null), [confirmBusy, setConfirmBusy] = useState(false), [commands, setCommands] = useState(false), [busy, setBusy] = useState(/* @__PURE__ */ new Set()), [batch, setBatch] = useState(null), [importState, setImport] = useState(null), [importBusy, setImportBusy] = useState(false), [offline, setOffline] = useState(!navigator.onLine), [offset, setOffset] = useState(0);
   const [commandQuery, setCommandQuery] = useState("");
+  const [confirmError,setConfirmError]=useState("");
+  useEffect(()=>setConfirmError(""),[confirmState]);
   const [sidebarCollapsed,setSidebarCollapsed]=useState(()=>localStorage.getItem('star-sidebar-collapsed')==='true');
   const closeDetail=()=>{const id=detail;setDetail(null);requestAnimationFrame(()=>document.querySelector(`[data-profile-id="${CSS.escape(id||'')}"] .profile-name`)?.focus());};
   const toggleSidebar=()=>setSidebarCollapsed(value=>{localStorage.setItem('star-sidebar-collapsed',String(!value));return !value;});
@@ -46,7 +49,17 @@ function App() {
     setToast({ message, status });
     toastTimer.current = setTimeout(() => setToast(null), status === "error" ? 9e3 : 4500);
   }, []);
-  const execute = useCallback(async (task, success) => {
+  useEffect(() => {
+    if (!toast || toast.status === 'error') return;
+    const dismiss = event => {
+      if (event.type === 'keydown' && (event.isComposing || ['Shift', 'Control', 'Meta', 'Alt'].includes(event.key))) return;
+      clearTimeout(toastTimer.current); setToast(null);
+    };
+    document.addEventListener('pointerdown', dismiss, true);
+    document.addEventListener('keydown', dismiss, true);
+    return () => {document.removeEventListener('pointerdown', dismiss, true); document.removeEventListener('keydown', dismiss, true);};
+  }, [toast]);
+  const execute = useCallback(async (task, success, propagate = false) => {
     try {
       const result = await task();
       if (result?.ok === false) throw new Error(result.error || "操作未完成");
@@ -54,6 +67,7 @@ function App() {
       if (success) notify(typeof success === "function" ? success(result) : success);
       return result;
     } catch (e) {
+      if (propagate) throw e;
       notify(messageOf(e), "error");
       return void 0;
     }
@@ -151,6 +165,10 @@ function App() {
   }, [page]);
   useEffect(() => setOffset(0), [query, filter, group, tag, sort]);
   const running = useMemo(() => new Map((snapshot?.runtime || []).map((r) => [r.id, r])), [snapshot?.runtime]);
+  const launches = useMemo(() => {
+    const records = snapshot?.startups || [];
+    return new Map(records.map(record => [record.id, latestStartup(records, record.id)]));
+  }, [snapshot?.startups]);
   const navigate = (next, nextFilter = "all", nextGroup = "") => {
     setPage(next);
     setFilter(nextFilter);
@@ -162,13 +180,13 @@ function App() {
     setOffset(0);
   };
   const openProfile = async (id, engine = "browse") => {
-    if (busy.has(id)) return;
+    if (busy.has(id) || launches.get(id)?.status === "starting") return;
     setBusy((b) => /* @__PURE__ */ new Set([...b, id]));
     try {
       if (running.get(id)?.running && engine === "browse") await window.api.action("focus", [id]);
       else await window.api[engine](id);
       await refresh();
-      notify("浏览器已就绪");
+      notify("浏览器窗口已打开");
     } catch (e) {
       notify(messageOf(e), "error");
     } finally {
@@ -246,22 +264,25 @@ function App() {
     const r = await execute(() => window.api.action(filter === "archive" ? "restore" : "archive", [...selected]), filter === "archive" ? "环境已恢复" : "环境已归档");
     if (r) setSelected(/* @__PURE__ */ new Set());
   } }]} /><span className="toolbar-spacer" /><IconButton icon={X} label="取消选择" id="batchClear" onClick={() => setSelected(/* @__PURE__ */ new Set())} /></div>}
- {profiles.length ? <><div className="environment-table object-table"><table><thead><tr><th className="select-cell"><input type="checkbox" id="selAll" aria-label="选择本页环境" checked={visible.length > 0 && visible.every((p) => selected.has(p.id))} onChange={(e) => setSelected(e.target.checked ? new Set(visible.map((p) => p.id)) : /* @__PURE__ */ new Set())} /></th><th>环境名称</th><th className="network-column">网络 / 地区</th><th className="last-column">最近打开</th><th className="align-right">操作</th></tr></thead><tbody id="rows">{visible.map((p) => <tr key={p.id} data-profile-id={p.id} aria-selected={detail===p.id} className={(detail === p.id ? "focused " : "") + (selected.has(p.id) ? "checked" : "")} onClick={() => setDetail(p.id)}><td className="select-cell" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`选择 ${p.name}`} checked={selected.has(p.id)} onChange={() => select(p.id)} /></td><td><div className="profile-name-cell"><div className={"environment-avatar avatar-" + p.os}><Monitor size={17} /></div><div className="profile-main-info"><button className="profile-name" onClick={() => setDetail(p.id)}>{p.name}{p.pinned && <Pin size={12} />}</button><div className="profile-secondary"><span>{osName(p.os)}</span>{(p.tags || []).slice(0, 2).map((t) => <span className="tag" key={t}>{t}</span>)}{busy.has(p.id) ? <Badge status="busy">启动中</Badge> : running.get(p.id)?.running && <Badge status="success">运行中</Badge>}</div></div></div></td><td className="network-column"><div className="network-cell"><Globe2 size={14} /><span title={proxyLabel(p.proxy)}>{p.proxy?.host ? proxyLabel(p.proxy) : "本机网络"}</span></div><small>{p.country} · {p.timezoneManual ? p.timezone : "自动时区"}</small></td><td className="last-column muted">{timeAgo(p.lastOpenedAt)}</td><td onClick={(e) => e.stopPropagation()}><div className="row-actions"><button className={"button launch-button" + (running.get(p.id)?.running ? " running" : "")} disabled={busy.has(p.id) || p.archived} onClick={() => openProfile(p.id)}>{busy.has(p.id) ? <LoaderCircle size={14} className="spin" /> : running.get(p.id)?.running ? <ArrowUpRight size={14} /> : <Play size={14} />}<span>{busy.has(p.id) ? "启动中" : running.get(p.id)?.running ? "打开" : "启动"}</span></button><button className="icon-button row-detail-button" data-act="fp" data-id={p.id} aria-label={`${p.name} 指纹详情`} onClick={() => setDetail(p.id)}><Fingerprint size={16} /></button><button className="icon-button row-detail-button" data-act="edit" data-id={p.id} aria-label={`编辑 ${p.name}`} onClick={() => setEditor(p)}><Settings2 size={16} /></button><ProfileMenu profile={p} onDetail={setDetail} onEdit={setEditor} /></div></td></tr>)}</tbody></table></div><footer className="list-footer"><span>{offset + 1}–{Math.min(offset + PAGE_SIZE, profiles.length)}，共 {profiles.length} 个环境</span><span className="toolbar-spacer" />{profiles.length > PAGE_SIZE && <><IconButton icon={ChevronLeft} label="上一页" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} /><IconButton icon={ChevronRight} label="下一页" disabled={offset + PAGE_SIZE >= profiles.length} onClick={() => setOffset(offset + PAGE_SIZE)} /></>}<span>配置与浏览数据保存在本机</span></footer></> : <Empty icon={filter === "archive" ? Archive : filter === "running" ? Play : Layers3} title={query || tag || group ? "没有找到匹配的环境" : filter === "running" ? "还没有运行中的环境" : filter === "pinned" ? "把常用环境置顶" : filter === "archive" ? "归档中没有环境" : "为下一段工作，新建一个环境"} description={query || tag || group ? "试试其他关键词，或清除筛选条件。" : filter === "running" ? "从全部环境启动浏览器，正在进行的工作会显示在这里。" : filter === "pinned" ? "在环境的更多操作中选择“置顶环境”，下次更快找到。" : filter === "archive" ? "暂时不用的环境可以归档，数据与配置都会保留。" : "不同账号的 Cookie、存储和浏览配置会各自独立保存。"}>{query || tag || group ? <Button onClick={() => {
+ {profiles.length ? <><div className="environment-table object-table"><table><thead><tr><th className="select-cell"><input type="checkbox" id="selAll" aria-label="选择本页环境" checked={visible.length > 0 && visible.every((p) => selected.has(p.id))} onChange={(e) => setSelected(e.target.checked ? new Set(visible.map((p) => p.id)) : /* @__PURE__ */ new Set())} /></th><th>环境名称</th><th className="network-column">网络 / 地区</th><th className="last-column">最近打开</th><th className="align-right">操作</th></tr></thead><tbody id="rows">{visible.map((p) => <tr key={p.id} data-profile-id={p.id} aria-selected={detail===p.id} className={(detail === p.id ? "focused " : "") + (selected.has(p.id) ? "checked" : "")} onClick={() => setDetail(p.id)}><td className="select-cell" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`选择 ${p.name}`} checked={selected.has(p.id)} onChange={() => select(p.id)} /></td><td><div className="profile-name-cell"><div className={"environment-avatar avatar-" + p.os}><Monitor size={17} /></div><div className="profile-main-info"><button className="profile-name" onClick={() => setDetail(p.id)}>{p.name}{p.pinned && <Pin size={12} />}</button><div className="profile-secondary"><span>{osName(p.os)}</span>{(p.tags || []).slice(0, 2).map((t) => <span className="tag" key={t}>{t}</span>)}<LaunchBadge record={launches.get(p.id)} busy={busy.has(p.id)} running={running.get(p.id)?.running} /></div></div></div></td><td className="network-column"><div className="network-cell"><Globe2 size={14} /><span title={proxyLabel(p.proxy)}>{p.proxy?.host ? proxyLabel(p.proxy) : "本机网络"}</span></div><small>{p.country} · {p.timezoneManual ? p.timezone : "自动时区"}</small></td><td className="last-column muted">{timeAgo(p.lastOpenedAt)}</td><td onClick={(e) => e.stopPropagation()}><div className="row-actions"><button className={"button launch-button" + (running.get(p.id)?.running ? " running" : "")} disabled={busy.has(p.id) || launches.get(p.id)?.status === "starting" || p.archived} onClick={() => openProfile(p.id)}>{busy.has(p.id) || launches.get(p.id)?.status === "starting" ? <LoaderCircle size={14} className="spin" /> : running.get(p.id)?.running ? <ArrowUpRight size={14} /> : <Play size={14} />}<span>{busy.has(p.id) || launches.get(p.id)?.status === "starting" ? "启动中" : running.get(p.id)?.running ? "打开" : "启动"}</span></button><button className="icon-button row-detail-button" data-act="fp" data-id={p.id} aria-label={`${p.name} 指纹详情`} onClick={() => setDetail(p.id)}><Fingerprint size={16} /></button><button className="icon-button row-detail-button" data-act="edit" data-id={p.id} disabled={launches.get(p.id)?.status === "starting"} aria-label={`编辑 ${p.name}`} onClick={() => setEditor(p)}><Settings2 size={16} /></button><ProfileMenu profile={p} onDetail={setDetail} onEdit={setEditor} /></div></td></tr>)}</tbody></table></div><footer className="list-footer"><span>{offset + 1}–{Math.min(offset + PAGE_SIZE, profiles.length)}，共 {profiles.length} 个环境</span><span className="toolbar-spacer" />{profiles.length > PAGE_SIZE && <><IconButton icon={ChevronLeft} label="上一页" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} /><IconButton icon={ChevronRight} label="下一页" disabled={offset + PAGE_SIZE >= profiles.length} onClick={() => setOffset(offset + PAGE_SIZE)} /></>}<span>配置与浏览数据保存在本机</span></footer></> : <Empty icon={filter === "archive" ? Archive : filter === "running" ? Play : Layers3} title={query || tag || group ? "没有找到匹配的环境" : filter === "running" ? "还没有运行中的环境" : filter === "pinned" ? "把常用环境置顶" : filter === "archive" ? "归档中没有环境" : "为下一段工作，新建一个环境"} description={query || tag || group ? "试试其他关键词，或清除筛选条件。" : filter === "running" ? "从全部环境启动浏览器，正在进行的工作会显示在这里。" : filter === "pinned" ? "在环境的更多操作中选择“置顶环境”，下次更快找到。" : filter === "archive" ? "暂时不用的环境可以归档，数据与配置都会保留。" : "不同账号的 Cookie、存储和浏览配置会各自独立保存。"}>{query || tag || group ? <Button onClick={() => {
     setQuery("");
     setTag("");
     setGroup("");
   }}>清除筛选</Button> : filter === "all" ? <Button variant="primary" icon={Plus} onClick={() => setEditor(null)}>新建第一个环境</Button> : filter === "running" ? <Button onClick={() => setFilter("all")}>查看全部环境</Button> : null}</Empty>}</section>{selectedProfile && <ProfileDetail profile={selectedProfile} onClose={closeDetail} onEdit={setEditor} position={profiles.findIndex(p=>p.id===detail)} total={profiles.length} onStep={step=>{const next=profiles[profiles.findIndex(p=>p.id===detail)+step];if(next)setDetail(next.id);}} />}</div> : <div className="page-content">{page === "tasks" ? <TasksPage /> : page === "synchronizer" ? <SynchronizerPage /> : page === "extensions" ? <ExtensionsPage /> : page === "proxies" ? <ProxyPage /> : page === "cookies" ? <CookiePage /> : page === "bookmarks" ? <BookmarksPage /> : page === "downloads" ? <DownloadsPage /> : page === "activity" ? <ActivityPage /> : <SettingsPage />}</div>}
  </main></div>
  {editor !== void 0 && <ProfileEditor key={editor?.id || "new"} profile={editor} onClose={() => setEditor(void 0)} />}
- <Modal open={!!confirmState} onOpenChange={(v) => !v && !confirmBusy && setConfirm(null)} title={confirmState?.title || ""} description={confirmState?.description || ""} footer={<><Button disabled={confirmBusy} onClick={() => setConfirm(null)}>取消</Button><Button variant="danger-solid" disabled={confirmBusy} onClick={async () => {
-    setConfirmBusy(true);
+ <Modal open={!!confirmState} dismissible={!confirmBusy} onOpenChange={(v) => !v && !confirmBusy && setConfirm(null)} title={confirmState?.title || ""} description={confirmState?.description || ""} footer={<div className="confirmation-footer">{confirmError&&<p id="confirmation-error" className="inline-error" role="alert" tabIndex={-1}>{confirmError}</p>}<div className="confirmation-actions"><Button disabled={confirmBusy} onClick={() => setConfirm(null)}>取消</Button><Button variant="danger-solid" disabled={confirmBusy} onClick={async () => {
+    setConfirmBusy(true);setConfirmError("");
     try {
       await confirmState.run();
       setConfirm(null);
+    } catch(error) {
+      setConfirmError(messageOf(error));
+      requestAnimationFrame(()=>document.getElementById("confirmation-error")?.focus());
     } finally {
       setConfirmBusy(false);
     }
-  }}>{confirmBusy ? "处理中…" : confirmState?.label || "确认"}</Button></>} />
+  }}>{confirmBusy ? "处理中…" : confirmState?.label || "确认"}</Button></div></div>} />
  <Modal open={!!batch} onOpenChange={(v) => !v && setBatch(null)} title="批量更改配置" description={`更改选中的 ${selected.size} 个环境。留空的字段会保持原值。`} footer={<><Button onClick={() => setBatch(null)}>取消</Button><Button variant="primary" onClick={async () => {
     const patch = {};
     if (batch.group.trim()) patch.group = batch.group.trim();

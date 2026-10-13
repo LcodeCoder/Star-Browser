@@ -7,7 +7,7 @@ const {validateProfile,validateProxy,importProfiles}=require('./profile-validati
 const {getLaunchedBrowser,getLaunchedBrowsers,findChrome}=require('./launcher');
 const {parseProxyInput}=require('./proxy-parse');
 const pendingImports=new Map(), downloadItems=new Map();
-function registerWorkbench(store,{commands,starting}={}) {
+function registerWorkbench(store,{commands,starting,launches=()=>[]}={}) {
   const extensions=require('./extensions').initExtensionLibrary(app.getPath('userData'),store),pendingExtensions=new Map();
   ipcMain.handle('star:extensionPreview',async(e)=>{
     const choice=await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender),{title:'选择已解压扩展',properties:['openDirectory']});if(choice.canceled)return {canceled:true};
@@ -43,7 +43,7 @@ function registerWorkbench(store,{commands,starting}={}) {
       const id=w._profile.id,row=active.get(id)||{id,running:true,engine:'内置 Chromium',windows:0};
       row.windows++;active.set(id,row);
     }
-    for(const [id,chrome] of getLaunchedBrowsers())if(!chrome.pipe.closed&&!active.has(id))active.set(id,{id,running:true,engine:'本机 Chrome',windows:0});
+    for(const [id,chrome] of getLaunchedBrowsers())if(!chrome.pipe.closed&&!active.has(id))active.set(id,{id,running:true,engine:chrome.nativeKernel?'Star Chromium（原生硬件）':'本机 Chrome',windows:0});
     return [...active.values()].sort((a,b)=>a.id.localeCompare(b.id));
   };
   const synchronizer=new (require('./synchronizer').Synchronizer)(store);
@@ -95,9 +95,9 @@ function registerWorkbench(store,{commands,starting}={}) {
   ipcMain.handle('star:taskCancel',(e,id)=>{managerOnly(e);return tasks.cancel(id);});
   ipcMain.handle('star:taskOutput',(e,id,index)=>{managerOnly(e);shell.showItemInFolder(tasks.outputFile(id,index));return true;});
   ipcMain.handle('star:snapshot',(e,knownToken)=>{
-    const running=runtime(),token=store.revision()+':'+JSON.stringify(running)+(synchronizer.session?':'+JSON.stringify(synchronizer.status()):'');
+    const running=runtime(),startup=launches(),token=JSON.stringify(startup)+":"+store.revision()+':'+JSON.stringify(running)+(synchronizer.session?':'+JSON.stringify(synchronizer.status()):'');
     if(knownToken===token)return {unchanged:true,token};
-    return {token,tasks:store.tasks(),taskRuns:store.taskRuns(),synchronizer:synchronizer.status(),profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
+    return {token,tasks:store.tasks(),taskRuns:store.taskRuns(),synchronizer:synchronizer.status(),profiles:store.list(),extensions:extensions.list(),proxies:store.listProxies(),bookmarks:store.listBookmarks(),activity:store.activities(),downloads:store.downloads(),preferences:store.preferences(),runtime:running,startups:startup,engine:{electron:process.versions.electron,chromium:process.versions.chrome,chrome:findChrome(),version:app.getVersion(),platform:process.platform,arch:process.arch}};
   });
   const profileAction=async(e,action,ids=[],patch={})=>{
     if(!Array.isArray(ids)||ids.length>500)throw new Error('每次最多操作 500 个环境');
@@ -105,6 +105,7 @@ function registerWorkbench(store,{commands,starting}={}) {
     for(const id of unique)require('./profile-backups').assertProfileUnlocked(id);
     if(!unique.every(id=>store.get(id)))throw new Error('部分环境已不存在，请刷新列表');
     if(['clone','update','archive','restore','regenerate'].includes(action)){
+      if(['update','archive','restore','regenerate'].includes(action)&&unique.some(id=>(starting?.()||[]).includes(id)))throw new Error('环境正在启动，请等待窗口打开后再修改');
       const activeIds=new Set(runtime().map(row=>row.id));
       if(['archive','regenerate'].includes(action)&&unique.some(id=>activeIds.has(id)))throw new Error('请先停止所选环境，再更改归档或指纹');
       const validated=action==='update'?validateProfile(patch):null;
@@ -183,15 +184,13 @@ function registerWorkbench(store,{commands,starting}={}) {
     if(!item||item.sender!==e.sender.id||Date.now()-item.time>10*60*1000)throw new Error('导入预览已过期，请重新选择文件');
     return store.transaction(()=>{const results=item.profiles.map(p=>store.create(p));store.activity('导入环境',`${results.length} 个环境`);return {ok:true,count:results.length};});
   });
-  ipcMain.handle('star:proxySave',(e,input)=>{const item=store.saveProxy(input);store.activity('保存代理',item.name);return item;});
-  ipcMain.handle('star:proxyRemove',(e,id)=>{store.removeProxy(id);store.activity('删除代理配置');return {ok:true};});
+  ipcMain.handle('star:proxySave',(e,input)=>store.transaction(()=>{const item=store.saveProxy(input);store.activity('保存代理',item.name);return item;}));
+  ipcMain.handle('star:proxyRemove',(e,id)=>store.transaction(()=>{store.removeProxy(id);store.activity('删除代理配置');return {ok:true};}));
   ipcMain.handle('star:proxyImport',(e,text)=>{
-    const lines=String(text).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    if(lines.length>500)throw new Error('每次最多导入 500 条代理');
-    const proxies=lines.map((line,i)=>{const parsed=parseProxyInput(line);if(!parsed)throw new Error(`第 ${i+1} 行代理格式无效`);return validateProxy(parsed);});
+    const proxies=require('./proxy-import-validation').validateProxyImport(text);
     return store.transaction(()=>{for(const proxy of proxies)store.saveProxy(proxy);store.activity('批量导入代理',`${proxies.length} 条代理`);return {ok:true,count:proxies.length};});
   });
-  ipcMain.handle('star:proxyResult',(e,id,result)=>{store.setProxyResult(id,result);return {ok:true};});
+  ipcMain.handle('star:proxyResult',(e,id,result)=>store.transaction(()=>{store.setProxyResult(id,result);return {ok:true};}));
   ipcMain.handle('star:preferences',(e,patch)=>{const next=store.preferences(patch);for(const w of BrowserWindow.getAllWindows())w.webContents.send('star:preferencesChanged',next);return next;});
   ipcMain.on('star:sessionNow',(e,id,tabs,index)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile?.id===id)store.sessionTabs(id,tabs,index);});
   ipcMain.handle('star:historyRecord',(e,id,url,title)=>{const w=BrowserWindow.fromWebContents(e.sender);if(w?._profile?.id!==id)return false;return store.recordHistory(id,url,title);});

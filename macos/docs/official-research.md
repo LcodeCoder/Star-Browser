@@ -85,3 +85,14 @@ CDP Target/Runtime 官方协议：https://chromedevtools.github.io/devtools-prot
 ## 任务复用与真实截图（0.10.0）
 
 本地任务定义复用参考此前 AdsPower RPA 与官方自动化功能分类；当前 JSON 为 Star 自有版本 1，不声称外部厂商格式兼容。Electron capturePage 官方实现：https://github.com/electron/electron/blob/main/shell/browser/api/electron_api_web_contents.cc ，API：https://www.electronjs.org/docs/latest/api/web-contents 。截图依赖真实显示表面，使用 stayAwake 选项和受控短暂失败重试；不能将加载完成当作任何显示表面必定可捕获的保证。访问日期：2026-10-12。
+
+
+## Simprint、GoLogin 与原生硬件一致性（2026-10-13）
+
+- 用户指定 https://github.com/Simprint/simprint ，研究提交 d2dc939bfae8efda8e4e4d791587d7a364ca4dd8。查看连续环境列表、创建页分区导航、配置摘要、内核校验与配置映射。选取信息组织和交互思路，在 Star 独立实现；其 AGPL 代码未复制进本项目。配置列表不证明对应内核运行行为。
+- GoLogin 官方下载页 https://gologin.com/download/ ，arm64 DMG SHA-256 f681f9b0921ad7e841dd193b8025a86ffda5aed699a6f8e8febdf89918a5a138。使用项目中的 baoyu-electron-extract skill 提取 153 个来源文件，阅读启动准备检查与错误分类；仅用于研究，未运行厂商应用或复制专有实现。公开 SDK 提交 40329508d12965409a5539f8e7b1f6a2492d30bb。研究挂载已经卸载。
+- https://github.com/abrahamjuliot/creepjs ，研究提交 10aa6724cd33a1015db1574211890518cd04f0cc 的 Worker API 和跨上下文校验结构。尚未将外站分数当作完整能力证明。
+- Chromium 固定提交 cfaadc5a132d78e1828635aa8405a499f3e14864 的 content/browser/client_hints/client_hints.cc：两类内存头读取 ApproximatedDeviceMemory::GetApproximatedDeviceMemory()，因此原生策略选取共用读取点。实际普通 Chrome 155 对照读到并发送 16 GB，页面层配置 2 GB 无法改变该网络值。
+- Chromium 主线解析为 a7a39438107ea6753993b2a6519d25c1b809b3d1（158.0.8104.0），只读检查发现第三方 Blink common BUILD.gn 的测试清单上下文冲突；缩小依赖上下文后可应用。仍须完整编译和原生运行验收。
+
+研究文件位于 /tmp/star-research-20261013，不进入发行包。当前实际设计、测试和限制以本项目专项报告为准。

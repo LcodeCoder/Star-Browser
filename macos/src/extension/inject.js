@@ -1,11 +1,20 @@
 "use strict";
-/**
- * 扩展内容脚本入口（MAIN world / document_start）
- * 真正的伪装逻辑在 fp-core.js（与 Electron 内置浏览器共用同一份）。
- * 配置来自 config.js -> window.__FP_CONFIG__（由主程序按环境写入）。
- */
-(function () {
-  var CFG = window.__FP_CONFIG__ && window.__FP_CONFIG__.fingerprint;
-  if (!CFG) return;
-  if (typeof installFingerprint === "function") installFingerprint(CFG);
-})();
+// Serialized into generated config.js and CDP scripts. Keep all state in closures.
+module.exports=function injectFingerprint(config,eventType,createRuntime){
+  'use strict';
+  const request={config,installed:false};
+  const event=new Event(eventType);
+  Object.defineProperty(event,'detail',{value:request});
+  globalThis.dispatchEvent(event);
+  if(request.installed)return true;
+  const runtime=createRuntime(globalThis);
+  runtime.installFingerprint(config);
+  // A process-random event name allows repeated installation without window globals.
+  globalThis.addEventListener(eventType,event=>{
+    const request=event.detail;
+    if(!request||!Object.hasOwn(request,'config'))return;
+    runtime.installFingerprint(request.config);
+    request.installed=true;
+  });
+  return true;
+};

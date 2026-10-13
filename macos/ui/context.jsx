@@ -13,7 +13,7 @@ function timeAgo(value) {
 }
 const dateTime = (value) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
 function proxyLabel(proxy) {
-  return proxy?.host ? `${proxy.host}:${proxy.port}` : "使用本机网络";
+  return proxy?.host ? `${proxy.host.includes(":") ? "[" + proxy.host.replace(/^\[|\]$/g, "") + "]" : proxy.host}:${proxy.port}` : "使用本机网络";
 }
 export {
   WorkspaceContext,

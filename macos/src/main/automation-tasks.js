@@ -2,25 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {BrowserWindow,webContents}=require('electron');
 const {assertProfileUnlocked,lockProfile,unlockProfile}=require('./profile-backups');
-const TYPES=new Set(['navigate','waitFor','click','fill','press','scroll','wait','screenshot']);
-const KEYS={Enter:13,Tab:9,Escape:27,Backspace:8,Delete:46,ArrowUp:38,ArrowDown:40,ArrowLeft:37,ArrowRight:39,Home:36,End:35};
-const string=(value,max)=>String(value??'').trim().slice(0,max);
-function validateTask(input){
- if(!input||typeof input!=='object'||!Array.isArray(input.steps)||!input.steps.length||input.steps.length>50)throw new Error('每个任务需要 1–50 个步骤');
- const name=string(input.name,120);if(!name)throw new Error('请输入任务名称');
- const steps=input.steps.map((step,index)=>{
-  const fail=message=>{throw new Error(`第 ${index+1} 步：${message}`);};
-  if(!step||!TYPES.has(step.type))fail('请选择支持的操作');const out={type:step.type};
-  if(['navigate'].includes(step.type)){out.url=string(step.url,4096);try{const url=new URL(out.url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)fail('地址需使用不含账号密码的 HTTP 或 HTTPS');}catch{fail('请输入完整的 HTTP 或 HTTPS 地址');}}
-  if(['waitFor','click','fill','scroll'].includes(step.type)){out.selector=string(step.selector,1000);if(!out.selector&&step.type!=='scroll')fail('请输入 CSS 元素定位');}
-  if(step.type==='fill'){out.text=String(step.text??'').slice(0,100000);}
-  if(step.type==='press'){out.key=step.key;if(!Object.hasOwn(KEYS,out.key))fail('请选择支持的按键');}
-  if(step.type==='scroll'){out.x=Number(step.x)||0;out.y=Number(step.y)||0;if(!Number.isFinite(out.x)||!Number.isFinite(out.y)||Math.abs(out.x)>10000||Math.abs(out.y)>10000)fail('滚动距离最多 10000 像素');}
-  if(step.type==='wait'){out.duration=Number(step.duration);if(!Number.isInteger(out.duration)||out.duration<100||out.duration>30000)fail('等待时间为 100–30000 毫秒');}
-  if(!['wait','press','screenshot'].includes(step.type)){out.timeout=Number(step.timeout)||15000;if(!Number.isInteger(out.timeout)||out.timeout<1000||out.timeout>60000)fail('超时为 1000–60000 毫秒');}
-  return out;
- });return {name,description:string(input.description,1000),steps};
-}
+const {validateTask,KEYS}=require('./task-validation');
 class TaskCancelled extends Error{constructor(){super('任务已取消');}}
 class AutomationTasks{
  constructor({app,store,commands,synchronizer}){

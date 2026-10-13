@@ -11,7 +11,7 @@ async function until(read,timeout=15000){const end=Date.now()+timeout;while(Date
 async function api(method,...args){return manager.evaluate(({method,args})=>window.api[method](...args),{method,args});}
 async function check(name,run){const start=Date.now();const detail=await run();results.push({name,status:'passed',durationMs:Date.now()-start,detail});console.log('PASS',name);}
 async function openDetails(id){await manager.locator('#navEnv').click();const data=(await api('list')).find(p=>p.id===id);await manager.locator('.profile-name').filter({hasText:data.name}).click();await manager.getByRole('tab',{name:'指纹',exact:true}).click();}
-async function browserPanel(){await browser.locator('#browserMenuBtn').click();await browser.getByRole('button',{name:'检测此环境',exact:true}).click();await browser.locator('#diagnosticSearch').waitFor();}
+async function browserPanel(){await browser.locator('#browserMenuBtn').click();await browser.getByRole('menuitem',{name:'检测此环境',exact:true}).click();await browser.locator('#diagnosticSearch').waitFor();}
 (async()=>{
  fs.mkdirSync(output,{recursive:true});
  try{

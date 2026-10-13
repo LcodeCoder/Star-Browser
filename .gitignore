@@ -16,3 +16,6 @@ macos/build/icon.iconset/
 ChangYiBrowser-electron-extract/
 
 macos/dist-win*/
+
+__pycache__/
+*.pyc

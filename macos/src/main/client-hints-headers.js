@@ -10,7 +10,13 @@ function createClientHints(){
   apply(url,headers,fp){const origin=secureOrigin(url);if(!origin||!fp)return headers;const m=metadata(fp),quote=JSON.stringify,list=values=>values.map(b=>`${quote(b.brand)};v=${quote(b.version)}`).join(', ');
    const values={'sec-ch-ua':list(m.brands),'sec-ch-ua-platform':quote(m.platform),'sec-ch-ua-mobile':m.mobile?'?1':'?0','sec-ch-ua-full-version':quote(m.fullVersion),'sec-ch-ua-full-version-list':list(m.fullVersionList),'sec-ch-ua-platform-version':quote(m.platformVersion),'sec-ch-ua-arch':quote(m.architecture),'sec-ch-ua-bitness':quote(m.bitness),'sec-ch-ua-wow64':m.wow64?'?1':'?0','sec-ch-ua-model':quote(m.model),'sec-ch-ua-form-factors':quote(m.mobile?'Mobile':'Desktop')};
    const low=new Set(['sec-ch-ua','sec-ch-ua-platform','sec-ch-ua-mobile']);
-   for(const key of Object.keys(headers)){const lower=key.toLowerCase();if(lower in values)headers[key]=values[lower];}
+   for(const key of Object.keys(headers)){
+    const lower=key.toLowerCase();
+    if(lower in values)headers[key]=values[lower];
+    // Rewrite native opt-in memory hints only when Chromium already supplied
+    // them. Never create a header that bypasses its permission/delegation rules.
+    if((lower==='device-memory'||lower==='sec-ch-device-memory')&&[2,4,8].includes(fp.deviceMemory))headers[key]=String(fp.deviceMemory);
+   }
    for(const [key,value] of Object.entries(values))if(low.has(key)||accepted.get(origin)?.has(key)){const present=Object.keys(headers).find(k=>k.toLowerCase()===key);headers[present||key]=value;}
    return headers;
   }

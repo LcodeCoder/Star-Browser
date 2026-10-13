@@ -261,3 +261,12 @@ GitHub Actions 38361374890 的 macOS 作业成功；Windows 40 项单元检查�
 GitHub Actions 38365552148（c978bb3，最终运行代码）macOS 与 Windows 作业均成功，包含 40 项单元检查、工作台/浏览器、体验、检测专项，以及 Windows x64 NSIS/ZIP 实际构建。Windows 用户设备、Windows ARM64 与 Intel Mac 的实机安装结果不包含在上述验证中。
 
 按用户“这一次做完就可以停了”的最新要求，本轮停止持续竞品迭代；未开始的列表直接重命名不计为完成，后续功能不再自动推进。原 Star Browser 自动开发 heartbeat 已为 PAUSED，本轮不重新启用。
+
+
+## 0.14.0 · 本轮工作台与打包验证
+
+2026-10-13 本轮新增 76 项 Node 单元检查，主 E2E 24 项、工作台编辑器 9 项、浏览器设置 12 项、书签 7 项、Cookie 工作台 6 项、代理工作台 6 项通过。Cookie 工作台用 125 个临时环境验证分页、搜索、读取失败重试和最多四个并发读取；代理专项用真实 `profiles.json` 路径注入 `renameSync` 故障，验证导入、保存、检测结果、删除和环境分配的内存/文件/工作记录回滚。
+
+0.14.0 Mac arm64 DMG/ZIP 与 Windows x64 NSIS/ZIP 已生成。`npm run test:package` 对 Mac arm64 打包应用完成 12 项实际检查，包含签名、asar 资源、启动、网页/Worker 首脚本、设置保存、代理失败和本地任务。Windows 产物在 macOS 上完成交叉构建、ZIP 完整性和 PE 类型检查；Windows 真机安装运行仍需在 Windows 设备上确认。
+
+本轮 Chromium 补丁策略仍为准备态：固定 155.0.8059.40，硬件 54 项、屏幕 69 项独立策略检查和 Python 工具 9 项通过，`compiledChromium: false`、`p0Complete: false`。再次从上游拉取时遇到 Gitiles HTTP 429，因此没有生成新的上游兼容性结论。当前源码溯源脚本在外部原始证据被清理后只报告语法检查。

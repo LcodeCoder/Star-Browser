@@ -8,11 +8,14 @@
  */
 const fs = require("fs");
 try {
-  const { installFingerprint } = require("../extension/fp-core.js");
+  const createRuntime = require("../extension/fp-core.js");
   const p = process.env.FP_CONFIG_PATH;
   if (p && fs.existsSync(p)) {
     const cfg = JSON.parse(fs.readFileSync(p, "utf-8"));
-    if (cfg && cfg.fingerprint) installFingerprint(cfg.fingerprint);
+    if (cfg && cfg.fingerprint) {
+      const { metadata } = require("./fingerprint-protocol");
+      createRuntime(globalThis).installFingerprint({...cfg.fingerprint,userAgentMetadata:metadata(cfg.fingerprint)});
+    }
   }
 } catch (e) {
   // 预加载失败不应阻塞页面

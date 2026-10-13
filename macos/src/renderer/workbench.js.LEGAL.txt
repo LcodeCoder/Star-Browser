@@ -11,10 +11,10 @@ react/cjs/react.production.js:
    * LICENSE file in the root directory of this source tree.
    */
 
-scheduler/cjs/scheduler.production.js:
+react/cjs/react-jsx-runtime.production.js:
   /**
    * @license React
-   * scheduler.production.js
+   * react-jsx-runtime.production.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *
@@ -33,10 +33,10 @@ react-dom/cjs/react-dom.production.js:
    * LICENSE file in the root directory of this source tree.
    */
 
-react-dom/cjs/react-dom-client.production.js:
+scheduler/cjs/scheduler.production.js:
   /**
    * @license React
-   * react-dom-client.production.js
+   * scheduler.production.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *
@@ -44,10 +44,10 @@ react-dom/cjs/react-dom-client.production.js:
    * LICENSE file in the root directory of this source tree.
    */
 
-react/cjs/react-jsx-runtime.production.js:
+react-dom/cjs/react-dom-client.production.js:
   /**
    * @license React
-   * react-jsx-runtime.production.js
+   * react-dom-client.production.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *

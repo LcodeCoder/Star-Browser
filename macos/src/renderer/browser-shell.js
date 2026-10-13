@@ -290,59 +290,12 @@ function applyProxyPaste() {
     toast("请先粘贴代理文本");
     return;
   }
-  // 复用主进程同一套解析规则（此处内联同款解析，避免额外 IPC）
-  let s = raw,
-    type = "socks5";
-  const m = s.match(/^([a-zA-Z0-9]+):\/\//);
-  if (m) {
-    const sch = m[1].toLowerCase();
-    type = sch === "socks5" || sch === "socks" ? "socks5" : "http";
-    s = s.slice(m[0].length);
-  }
-  s = s.replace(/^\[/, "").replace(/\]$/, "");
-  let user = "",
-    pass = "";
-  const at = s.indexOf("@");
-  if (at >= 0) {
-    const cred = s.slice(0, at);
-    s = s.slice(at + 1);
-    const ci = cred.indexOf(":");
-    if (ci >= 0) {
-      user = cred.slice(0, ci);
-      pass = cred.slice(ci + 1);
-    } else {
-      user = cred;
-    }
-  }
-  const parts = s.split(":");
-  let host = "",
-    port = "";
-  if (parts.length >= 2) {
-    if (parts.length >= 4) {
-      host = parts[0];
-      port = parts[1];
-      user = parts.slice(2, -1).join(":");
-      pass = parts[parts.length - 1];
-    } else if (parts.length === 3) {
-      host = parts[0];
-      port = parts[1];
-      if (at < 0) user = parts[2];
-    } else {
-      host = parts[0];
-      port = parts[1];
-    }
-  }
-  if (!host) {
-    toast("无法解析该代理文本");
-    return;
-  }
-  $("s-proxyOn").checked = true;
-  $("s-type").value = type;
-  $("s-host").value = host + (port ? ":" + port : "");
-  $("s-user").value = user || "";
-  $("s-pass").value = pass || "";
-  box.value = "";
-  toast("已自动填入代理：" + host + (port ? ":" + port : ""));
+  const parsed=StarSettingsValidation.parseProxyInput(raw,$("s-type").value||"socks5");
+  if(!parsed){StarSettings.error("无法解析代理，请使用完整地址和端口，例如 https://账号:密码@host:8080","proxy.host");return;}
+  $("s-proxyOn").checked=true;$("s-type").value=parsed.type;
+  $("s-host").value=(parsed.host.includes(":")?"["+parsed.host+"]":parsed.host)+":"+parsed.port;
+  $("s-user").value=parsed.user;$("s-pass").value=parsed.pass;box.value="";
+  StarSettings.proxyPasted();toast("已填入代理配置，保存后应用");
 }
 
 $("gear").addEventListener("click", () => panel.hidden ? StarSettings.open() : StarSettings.close());
@@ -382,7 +335,7 @@ function syncPanelFromProfile() {
   $("s-proxyOn").checked = !!proxy.host;
   $("s-type").value = proxy.type || "socks5";
   $("s-host").value = proxy.host
-    ? proxy.host + (proxy.port ? ":" + proxy.port : "")
+    ? (proxy.host.includes(":") ? "[" + proxy.host + "]" : proxy.host) + (proxy.port ? ":" + proxy.port : "")
     : "";
   $("s-user").value = proxy.user || "";
   $("s-pass").value = proxy.pass || "";
@@ -417,47 +370,10 @@ $("s-clear").addEventListener("click", async () => {
   }
 });
 $("s-save").addEventListener("click", async () => {
-  if(!StarSettings.beginSave())return;
-  const country = $("s-country").value;
-  const startUrl = $("s-start").value.trim();
-  const on = $("s-proxyOn").checked;
-  const type = $("s-type").value;
-  const hp = parseProxy($("s-host").value);
-  const proxy = on
-    ? {
-        type,
-        host: hp.host,
-        port: hp.port,
-        user: $("s-user").value.trim(),
-        pass: $("s-pass").value,
-      }
-    : { type: "socks5", host: "", port: "", user: "", pass: "" };
-  const regen = $("s-regen").checked;
-  const webrtc = $("s-webrtc").value || "proxy";
-  const note = $("s-note").value.trim();
-  const tags = $("s-tags")
-    .value.split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const language = $("s-language").value;
-  const langManual = StarSettings.languageManual();
-  // 时区：手动选中则锁定该时区（用于对齐特定检测站的 GeoIP 库）；选「自动」则跟随出口 IP
-  const timezone = $("s-timezone") ? $("s-timezone").value : "";
-  const timezoneManual = !!timezone;
+  const draft=StarSettings.beginSave();if(!draft)return;
+  const {langManual}=draft;
   try {
-    const np = await window.api.browseSave({
-      country,
-      startUrl,
-      proxy,
-      webrtc,
-      regen,
-      note,
-      tags,
-      language,
-      langManual,
-      timezone,
-      timezoneManual,
-    });
+    const np = await window.api.browseSave(draft);
     if (!np) throw new Error("环境已关闭，请重新打开后再保存");
     if (np) {
       profile = np;
@@ -805,7 +721,7 @@ launcher.addEventListener("click", (e) => {
 
 // ---------------- 收藏夹 ----------------
 $("bmBtn").addEventListener("click", () => {
-  $("settings").hidden = true;
+  if (!panel.hidden && !StarSettings.close()) return;
   $("launcher").hidden = true;
   StarNetwork.close(false);
   const bp = $("bmPanel");
@@ -829,12 +745,8 @@ $("bm-add-current").addEventListener("click", async () => {
     toast("当前页面无可收藏地址");
     return;
   }
-  const r = await window.api.bookmarksAdd({ title: title || url, url });
-  if (r && r.id) {
-    toast("已收藏：" + (title || url));
-    await refreshBookmarks();
-    renderBookmarks();
-  } else toast("收藏失败");
+  const saved = await addPageBookmark(title, url);
+  if (saved) { renderBookmarks(); openStarPop(saved); }
 });
 
 async function renderBookmarks() {
@@ -1048,64 +960,98 @@ $("starBtn").addEventListener("click", async () => {
   if (existing) {
     openStarPop(existing);
   } else {
-    const r = await window.api.bookmarksAdd({ title: title || url, url });
-    if (r && r.id) {
-      toast("已收藏：" + (title || url));
-      await refreshBookmarks();
-    } else toast("收藏失败");
+    const saved = await addPageBookmark(title, url);
+    if (saved) openStarPop(saved);
   }
 });
-function openStarPop(b) {
-  const pop = $("starPop");
-  if (!pop) return;
-  $("starTitle").value = b.title || "";
-  $("starUrl").value = b.url || "";
-  $("starRemove").dataset.id = b.id;
-  $("starRemove").style.display = "";
-  pop.hidden = false;
-  const sb = $("starBtn").getBoundingClientRect();
-  pop.style.left = Math.max(8, sb.left) + "px";
-  pop.style.top = sb.bottom + 4 + "px";
-  setTimeout(() => {
-    try {
-      $("starTitle").focus();
-      $("starTitle").select();
-    } catch (_) {}
-  }, 30);
+function bookmarkError(error) {
+  return String(error?.message || error || "书签操作失败").replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 }
-$("starDone").addEventListener("click", async () => {
-  const id = $("starRemove").dataset.id;
-  if (!id) return;
-  const title = $("starTitle").value.trim() || $("starUrl").value.trim();
-  const url = $("starUrl").value.trim();
-  if (!url) {
-    toast("网址不能为空");
-    return;
+let bookmarkCreatePending = null;
+async function addPageBookmark(title, url) {
+  if (bookmarkCreatePending) return bookmarkCreatePending;
+  const name = String(title || url).trim().slice(0, 512).replace(/[\uD800-\uDBFF]$/, "") || url;
+  $("starBtn").disabled = true;
+  bookmarkCreatePending = (async () => {
+    try {
+      const saved = await window.api.bookmarksAdd({ title: name, url });
+      if (!saved?.id) throw new Error("书签保存失败，请重试");
+      await refreshBookmarks(); toast("书签已添加"); return saved;
+    } catch (error) { toast(bookmarkError(error)); return null; }
+  })();
+  try { return await bookmarkCreatePending; }
+  finally { bookmarkCreatePending = null; $("starBtn").disabled = false; }
+}
+let starInitial = null, starBusy = false, starPreviousFocus = null;
+function setStarError(error) {
+  const message = $("starError"); message.textContent = error ? bookmarkError(error) : ""; message.hidden = !error;
+  for (const [field, id] of [["title", "starTitle"], ["url", "starUrl"]]) {
+    const input = $(id); input.removeAttribute("aria-invalid"); input.removeAttribute("aria-describedby");
+    if (error?.field === field) { input.setAttribute("aria-invalid", "true"); input.setAttribute("aria-describedby", "starError"); input.focus(); }
   }
-  await window.api.bookmarksUpdate(id, { title, url });
-  $("starPop").hidden = true;
-  await refreshBookmarks();
-  toast("已更新收藏");
+}
+function setStarBusy(busy) {
+  starBusy = busy; $("starFields").disabled = busy;
+  for (const id of ["starDone", "starCancel", "starRemove", "starContinue", "starAbandon"]) $(id).disabled = busy;
+  $("starDone").textContent = busy ? "保存中…" : "保存";
+  $("starPop").setAttribute("aria-busy", String(busy));
+}
+function showStarDiscard(show) { $("starDiscard").hidden = !show; $("starActions").hidden = show; }
+function requestStarClose(force = false, restoreFocus = true) {
+  if (starBusy || $("starPop").hidden) return;
+  if (!force && starInitial && (starInitial.title !== $("starTitle").value || starInitial.url !== $("starUrl").value)) {
+    starPreviousFocus = document.activeElement; showStarDiscard(true); $("starContinue").focus(); return;
+  }
+  $("starPop").hidden = true; if (restoreFocus) $("starBtn").focus();
+}
+function positionStarPopover() {
+  const pop = $("starPop"); if (pop.hidden) return;
+  const anchor = $("starBtn").getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(anchor.left, innerWidth - pop.offsetWidth - 8)) + "px";
+  pop.style.top = Math.max(8, Math.min(anchor.bottom + 4, innerHeight - pop.offsetHeight - 8)) + "px";
+}
+window.addEventListener("resize", () => requestAnimationFrame(positionStarPopover));
+function openStarPop(b) {
+  const pop = $("starPop"); if (!pop || starBusy) return;
+  if (!pop.hidden && starInitial && (starInitial.title !== $("starTitle").value || starInitial.url !== $("starUrl").value)) { requestStarClose(); return; }
+  $("starTitle").value = b.title || ""; $("starUrl").value = b.url || ""; $("starRemove").dataset.id = b.id;
+  starInitial = {title: $("starTitle").value, url: $("starUrl").value};
+  setStarError(null); setStarBusy(false); showStarDiscard(false); pop.hidden = false;
+  positionStarPopover();
+  $("starTitle").focus(); $("starTitle").select();
+}
+$("starForm").addEventListener("submit", async event => {
+  event.preventDefault(); if (starBusy) return;
+  const id = $("starRemove").dataset.id; if (!id) return;
+  showStarDiscard(false); setStarError(null);
+  let value;
+  try { value = StarBookmarkValidation.validateBookmark({title: $("starTitle").value, url: $("starUrl").value}); }
+  catch (error) { setStarError(error); return; }
+  setStarBusy(true);
+  try {
+    const saved = await window.api.bookmarksUpdate(id, value);
+    if (!saved) throw new Error("这个书签已被删除，请重新添加");
+    await refreshBookmarks(); setStarBusy(false); requestStarClose(true); toast("书签已保存");
+  } catch (error) { setStarError(error); }
+  finally { setStarBusy(false); }
 });
 $("starRemove").addEventListener("click", async () => {
-  const id = $("starRemove").dataset.id;
-  if (!id) return;
-  await window.api.bookmarksRemove(id);
-  $("starPop").hidden = true;
-  await refreshBookmarks();
-  toast("已删除收藏");
+  if (starBusy) return;
+  const id = $("starRemove").dataset.id; if (!id) return;
+  setStarError(null); setStarBusy(true);
+  try { await window.api.bookmarksRemove(id); await refreshBookmarks(); setStarBusy(false); requestStarClose(true); toast("书签已删除"); }
+  catch (error) { setStarError(error); }
+  finally { setStarBusy(false); }
 });
-// 点击别处关闭气泡
-document.addEventListener("click", (e) => {
-  const pop = $("starPop");
-  if (
-    pop &&
-    !pop.hidden &&
-    !pop.contains(e.target) &&
-    e.target !== $("starBtn")
-  )
-    pop.hidden = true;
+$("starCancel").addEventListener("click", () => requestStarClose());
+$("starAbandon").addEventListener("click", () => requestStarClose(true));
+$("starContinue").addEventListener("click", () => { showStarDiscard(false); if (starPreviousFocus?.isConnected && $("starPop").contains(starPreviousFocus)) starPreviousFocus.focus(); else $("starTitle").focus(); });
+for (const id of ["starTitle", "starUrl"]) $(id).addEventListener("input", () => { setStarError(null); showStarDiscard(false); });
+$("starPop").addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); requestStarClose(); }
+  else if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !event.isComposing) { event.preventDefault(); if (!starBusy) $("starForm").requestSubmit(); }
 });
+document.addEventListener("click", event => { const pop = $("starPop"); if (!pop.hidden && !pop.contains(event.target) && !$("starBtn").contains(event.target)) requestStarClose(false, false); });
 
 // ---- 书签栏显隐（Ctrl+Shift+B，记忆到 localStorage） ----
 function applyBmBarVisibility() {
@@ -1584,7 +1530,7 @@ $("newTab").addEventListener("click", () => {
 // 书签栏「»」：打开完整收藏夹面板
 if ($("bmBarMore"))
   $("bmBarMore").addEventListener("click", () => {
-    $("settings").hidden = true;
+    if (!panel.hidden && !StarSettings.close()) return;
     $("launcher").hidden = true;
     StarNetwork.close(false);
     const bp = $("bmPanel");

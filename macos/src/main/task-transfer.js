@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const {validateTask}=require('./automation-tasks');
+const {validateTask}=require('./task-validation');
 const MAX_BYTES=32*1024*1024,MAX_TASKS=100,TTL=10*60*1000;
 function definition(input,index){
  const fail=message=>{throw new Error(`任务 ${index+1}：${message}`);};

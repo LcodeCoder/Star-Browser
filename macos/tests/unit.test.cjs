@@ -361,3 +361,219 @@ test('当前文档未完成或检查期间导航时拒绝返回过期报告',asy
  wc.isDestroyed=()=>false;wc.getURL=()=>reads<2?'https://example.test/':'https://another.test/';
  await assert.rejects(auditElectron(wc),/检查期间跳转/);
 });
+
+test('后台协议错误必须报告，页面与 Worker 的重复区域覆盖只接受相同语言',async()=>{
+ const {applyProtocol}=require('../src/main/fingerprint-protocol');const fp=generateFingerprint('strict-protocol',{language:'fr-FR',timezone:'Europe/Paris'});
+ const send=async method=>{if(method==='Emulation.setLocaleOverride')throw new Error('Another locale override is already in effect');if(method==='Runtime.evaluate')return {result:{value:'fr-FR'}};return {};};
+ await applyProtocol(send,fp,{metrics:false,worker:true});
+ await assert.rejects(applyProtocol(async(method,params)=>method==='Runtime.evaluate'?{result:{value:'zh-CN'}}:send(method,params),fp,{metrics:false,worker:true}),/语言配置冲突/);
+ await assert.rejects(applyProtocol(async method=>{if(method==='Emulation.setHardwareConcurrencyOverride')throw new Error('hardware unavailable');return {};},fp,{metrics:false,worker:true}),/hardware unavailable/);
+});
+
+test('Worker 重复配置保留首次原生 UA 验证，避免把旧 JS 覆盖误认为原生支持',async()=>{
+ const {configureTarget}=require('../src/main/fingerprint-targets');const fp=generateFingerprint('worker-native-state',{language:'fr-FR'});let releases=0,reads=0,source='';
+ const send=async(method,params)=>{if(method==='Runtime.runIfWaitingForDebugger')releases++;if(method==='Runtime.evaluate'){if(params.expression.startsWith('({ua:')){reads++;return {result:{value:{ua:fp.userAgent,platform:fp.platform,language:fp.language,languages:fp.languages}}};}source=params.expression;return {result:{value:true}};}return {};};
+ const result=await configureTarget(send,fp,'shared_worker','',{protocolManaged:false});assert.equal(result.protocolManaged,false);assert.equal(reads,0);assert.equal(releases,1);assert.ok(source.includes('"protocolManaged":false'));
+ await assert.rejects(configureTarget(async(method,params)=>{if(method==='Emulation.setTimezoneOverride')throw new Error('invalid timezone');return send(method,params);},fp,'service_worker',''),/invalid timezone/);assert.equal(releases,2);
+});
+
+test('报告列出 Worker 配置差异、框架像素比限制，读取失败和未运行不记作通过',()=>{
+ const {report}=require('../src/main/fingerprint-audit');const fp=generateFingerprint('context-report',{language:'fr-FR',timezone:'Europe/Paris'});
+ const value={ua:fp.userAgent,platform:fp.platform,language:fp.language,languages:fp.languages,locale:fp.language,numberLocale:fp.language,cpu:fp.hardwareConcurrency,memory:fp.deviceMemory,tz:fp.timezone};
+ const page={...value,screen:fp.screen.width+' × '+fp.screen.height,dpr:1.5,screenMedia:true,dprMedia:true,gpu:'native'};
+ const observed={page,worker:value,webgpu:{available:false},contexts:[{type:'shared_worker',url:'https://example.test/shared.js',value:{...value,memory:16}},{type:'service_worker',url:'https://example.test/service.js',error:'actual timeout'},{type:'iframe',url:'https://frame.test/frame',value:{...page,dpr:1,dprMedia:false}}]};
+ const result=report({...fp,devicePixelRatio:1.5},observed,{engine:'test',url:'https://example.test/?private'});
+ assert.ok(result.rows.some(row=>row.context==='Shared Worker 1'&&row.label==='设备内存'&&row.state==='different'));
+ assert.ok(result.rows.some(row=>row.context==='iframe 1'&&row.label==='像素比（含缩放）'&&row.state==='different'));assert.ok(result.unknown>0);
+ assert.ok(result.advice.some(item=>item.title==='跨进程框架像素比未对齐'));assert.equal(result.contexts.find(item=>item.type==='service_worker').status,'unread');
+ const empty=report(fp,{page:{...page,dpr:fp.devicePixelRatio},worker:value,webgpu:{available:false},contexts:[]},{engine:'test',url:'https://example.test/'});assert.equal(empty.contexts.find(item=>item.type==='service_worker').status,'not-running');
+});
+
+
+test('报告分别说明 CSS 屏幕尺寸与 DPR，原生缩放匹配不误报像素比短板',()=>{
+ const {report}=require('../src/main/fingerprint-audit');const fp=generateFingerprint('screen-css-report',{os:'mac'});
+ const value={ua:fp.userAgent,platform:fp.platform,language:fp.language,languages:fp.languages,locale:fp.language,numberLocale:fp.language,cpu:fp.hardwareConcurrency,memory:fp.deviceMemory,tz:fp.timezone};
+ const page={...value,screen:fp.screen.width+' × '+fp.screen.height,dpr:fp.devicePixelRatio,screenMedia:true,dprMedia:true,gpu:'native'};
+ const observed={page,worker:value,webgpu:{available:false},contexts:[{type:'iframe',url:'https://frame.test/',value:{...page,screenMedia:false}}]};
+ const result=report(fp,observed,{engine:'本机 Chrome',url:'https://example.test/'});
+ assert.equal(result.differences,1);assert.ok(result.advice.some(row=>row.title==='CSS 屏幕尺寸未对齐'));assert.ok(!result.advice.some(row=>row.title==='跨进程框架像素比未对齐'));
+ const main=report(fp,{...observed,page:{...page,screenMedia:false},contexts:[]},{engine:'test',url:'https://example.test/'});assert.ok(main.advice.some(row=>row.title==='CSS 屏幕尺寸未对齐'));
+ const aligned=report(fp,{...observed,contexts:[{...observed.contexts[0],value:page}]},{engine:'test',url:'https://example.test/'});assert.ok(!aligned.advice.some(row=>row.title.includes('屏幕尺寸未对齐')));
+});
+
+
+test('环境校验规范化地区语言并提供可定位错误，不静默丢弃半填代理',()=>{
+ const {validateProfile,validateProxy,ProfileValidationError}=require('../src/main/profile-validation');
+ const saved=validateProfile({name:' QA ',country:' jp ',language:'EN-us',startUrl:'HTTPS://example.com/',proxy:{type:'https',host:'proxy.example',port:'8443',user:'qa@star',pass:'p:a$$'}});
+ assert.equal(saved.country,'JP');assert.equal(saved.language,'en-US');assert.equal(saved.proxy.pass,'p:a$$');
+ assert.equal(validateProxy({type:'http',host:'',port:'',user:'',pass:''}),null);
+ const failures=[
+  [{country:'USA'},'country'],[{language:'not_a_locale'},'language'],
+  [{proxy:{host:'',port:'8080'}},'proxy.host'],[{proxy:{host:'',pass:'secret'}},'proxy.host'],
+  [{proxy:{host:'proxy.example',port:'70000'}},'proxy.port'],[{proxy:'http://proxy.example:8080'},'proxy.host'],
+  [{fingerprint:{screen:{width:1600}}},'fingerprint.screen.height'],[{fingerprint:{screen:{height:900}}},'fingerprint.screen.width'],
+  [{fingerprint:{webgl:{vendor:'QA'}}},'fingerprint.webgl.renderer'],[{startUrl:'file:///tmp/private'},'startUrl']
+ ];
+ for(const [input,field] of failures)assert.throws(()=>validateProfile(input),error=>error instanceof ProfileValidationError&&error.field===field,JSON.stringify(input));
+});
+
+
+test('内存请求头只修正原生已发送值，保留浏览器声明与权限决定',()=>{
+ const {createClientHints}=require('../src/main/client-hints-headers'),hints=createClientHints(),fp=generateFingerprint('memory-headers',{fingerprint:{deviceMemory:2}});
+ hints.receive('https://memory.test/',{'Accept-CH':['Device-Memory, Sec-CH-Device-Memory']});
+ const none=hints.apply('https://memory.test/',{},fp);assert.ok(!('device-memory' in none));assert.ok(!('sec-ch-device-memory' in none));
+ const native=hints.apply('https://memory.test/',{'Device-Memory':'8','sec-ch-device-memory':'8'},fp);
+ assert.equal(native['Device-Memory'],'2');assert.equal(native['sec-ch-device-memory'],'2');
+ const insecure=hints.apply('http://remote.test/',{'device-memory':'8'},fp);assert.equal(insecure['device-memory'],'8');
+});
+
+test('网络观察只保留两类内存头，ExtraInfo 顺序与重定向不会保存凭据或地址参数',()=>{
+ const {NetworkFingerprintObserver}=require('../src/main/network-fingerprint-observer');const observer=new NetworkFingerprintObserver();observer.setMainFrame('top');
+ observer.record('Network.requestWillBeSentExtraInfo',{requestId:'early',headers:{'Device-Memory':'16',Cookie:'secret-cookie',Authorization:'secret-auth','Proxy-Authorization':'secret-proxy'}});
+ observer.record('Network.requestWillBeSent',{requestId:'early',type:'Fetch',request:{url:'https://user:password@one.test/private?q=secret-query',headers:{}}});
+ let snapshot=observer.snapshot();assert.equal(snapshot.requests[0].origin,'https://one.test');assert.deepEqual(snapshot.requests[0].headers,{'device-memory':'16'});assert.equal(snapshot.requests[0].source,'extra-info');assert.ok(!JSON.stringify(snapshot).includes('secret'));assert.ok(!JSON.stringify(snapshot).includes('password'));assert.ok(!JSON.stringify(snapshot).includes('/private'));
+ observer.record('Network.requestWillBeSent',{requestId:'redirect',type:'Document',frameId:'child',request:{url:'https://two.test/first',headers:{'device-memory':'8'}}});
+ observer.record('Network.requestWillBeSent',{requestId:'redirect',redirectResponse:{},redirectHasExtraInfo:false,type:'Document',frameId:'child',request:{url:'https://three.test/final',headers:{}}});
+ observer.record('Network.requestWillBeSentExtraInfo',{requestId:'redirect',headers:{'sec-ch-device-memory':'4'}});
+ snapshot=observer.snapshot();assert.deepEqual(snapshot.requests.find(row=>row.origin==='https://three.test').headers,{'sec-ch-device-memory':'4'});assert.deepEqual(snapshot.requests.find(row=>row.origin==='https://two.test').headers,{'device-memory':'8'});
+});
+test('网络观察按顶层导航清理旧证据，数据与未匹配请求有界',()=>{
+ const {NetworkFingerprintObserver}=require('../src/main/network-fingerprint-observer');const observer=new NetworkFingerprintObserver({limit:2,pendingLimit:3});observer.setMainFrame('top');
+ observer.record('Network.requestWillBeSent',{requestId:'old',type:'Document',frameId:'top',loaderId:'old-loader',request:{url:'https://one.test/old',headers:{'device-memory':'16'}}});
+ observer.record('Network.requestWillBeSent',{requestId:'new',type:'Document',frameId:'top',loaderId:'new-loader',request:{url:'https://one.test/new',headers:{}}});
+ assert.equal(observer.snapshot().requestsObserved,1);assert.deepEqual(observer.snapshot().requests[0].headers,{});
+ for(let i=0;i<10;i++)observer.record('Network.requestWillBeSent',{requestId:'bounded-'+i,type:'Fetch',request:{url:'https://host'+i+'.test/?private',headers:{'device-memory':'4'}}});
+ assert.equal(observer.snapshot().requests.length,2);assert.ok(observer.pending.size<=3);const detached=observer.snapshot();detached.requests[0].headers['device-memory']='999';assert.notEqual(observer.snapshot().requests[0].headers['device-memory'],'999');
+});
+test('网页 JS 一致时仍报告真实内存请求头差异，未发出不会计为通过',()=>{
+ const {report}=require('../src/main/fingerprint-audit'),{metadata}=require('../src/main/fingerprint-protocol');const fp=generateFingerprint('network-audit',{os:'mac',fingerprint:{deviceMemory:2}});
+ const page={ua:fp.userAgent,platform:fp.platform,language:fp.language,languages:fp.languages,locale:fp.language,numberLocale:fp.language,cpu:fp.hardwareConcurrency,memory:fp.deviceMemory,tz:fp.timezone,uaHints:metadata(fp),screen:fp.screen.width+' × '+fp.screen.height,dpr:fp.devicePixelRatio,screenMedia:true,dprMedia:true,gpu:'native'};
+ let value=report(fp,{page,worker:page,network:{status:'observed',requests:[{origin:'https://one.test',headers:{'device-memory':'16','sec-ch-device-memory':'16'}}]}},{engine:'test',url:'https://one.test/'});
+ assert.equal(value.rows.filter(row=>row.context==='网络请求头'&&row.state==='different').length,2);assert.ok(value.advice.some(row=>row.title==='内存请求头与页面不同'));
+ value=report(fp,{page,worker:page,network:{status:'observed',requests:[{origin:'https://one.test',headers:{}}]}},{engine:'test',url:'https://one.test/'});
+ assert.equal(value.rows.find(row=>row.context==='网络请求头').state,'not-observed');assert.ok(value.advice.some(row=>row.title==='内存请求头尚未观测'));
+});
+
+test('原生内核验收绑定完整发行包，Framework 改变会使旧报告失效',async()=>{
+ const {browserArtifact,validateAcceptance,ABI,HARDWARE_SCOPE,REQUIRED_CHECKS}=require('../src/main/native-kernel');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-native-artifact-'));
+ try{
+  const root=path.join(dir,'Chromium.app'),executable=path.join(root,'Contents/MacOS/Chromium'),framework=path.join(root,'Contents/Frameworks/ChromiumFramework.framework/Versions/A/ChromiumFramework');
+  fs.mkdirSync(path.dirname(executable),{recursive:true});fs.mkdirSync(path.dirname(framework),{recursive:true});fs.writeFileSync(executable,'fixture launcher');fs.writeFileSync(framework,'fixture Blink runtime');
+  const artifact=await browserArtifact(executable,'darwin'),commit='a'.repeat(40);
+  const report={schemaVersion:1,abi:ABI,status:'hardware-accepted',scope:[...HARDWARE_SCOPE],p0Complete:false,expectedSourceCommit:commit,binary:{platform:'darwin',arch:'arm64',version:'155.0.8059.40',sourceCommit:commit,bundleSha256:artifact.bundleSha256,executableSha256:artifact.executableSha256},checks:REQUIRED_CHECKS.map(id=>({id,status:'passed'}))};
+  assert.equal(validateAcceptance(report,artifact,{platform:'darwin',arch:'arm64'}).p0Complete,false);
+  fs.writeFileSync(framework,'changed Blink runtime');const changed=await browserArtifact(executable,'darwin');assert.equal(changed.executableSha256,artifact.executableSha256);assert.notEqual(changed.bundleSha256,artifact.bundleSha256);assert.throws(()=>validateAcceptance(report,changed,{platform:'darwin',arch:'arm64'}),/内核包或平台/);
+  for(const mutate of [r=>{r.p0Complete=true},r=>{r.checks=[]},r=>{r.checks=[...r.checks,r.checks[0]]},r=>{r.checks[0].status='partial'},r=>{r.binary.sourceCommit='b'.repeat(40)},r=>{r.scope.push('all-fingerprints')}]){const value=structuredClone(report);mutate(value);assert.throws(()=>validateAcceptance(value,artifact,{platform:'darwin',arch:'arm64'}));}
+  const outside=path.join(dir,'outside');fs.writeFileSync(outside,'outside runtime');fs.symlinkSync(outside,path.join(root,'external'));await assert.rejects(browserArtifact(executable,'darwin'),/外部符号链接/);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('原生策略和路径必须完整，未配置继续使用当前引擎',async()=>{
+ const {hardwareArguments,resolveNativeKernel}=require('../src/main/native-kernel');assert.deepEqual(hardwareArguments({hardwareConcurrency:4,deviceMemory:2}),['--star-fingerprint-hardware=4,2']);
+ for(const value of [null,{hardwareConcurrency:0,deviceMemory:2},{hardwareConcurrency:4,deviceMemory:999}])assert.throws(()=>hardwareArguments(value),/支持范围/);
+ assert.equal(await resolveNativeKernel({}),null);await assert.rejects(resolveNativeKernel({STAR_NATIVE_KERNEL_EXECUTABLE:'/tmp/missing'}),/必须同时设置/);
+});
+
+
+test('代理地址与端口规范化，拒绝带端口地址和模糊数值，IPv6 不丢失', () => {
+ const {validateProxy,ProfileValidationError}=require('../src/main/profile-validation');
+ for(const host of ['proxy.example:8080','http://proxy.example','proxy.example/path','proxy.example?x','proxy.example#x','proxy.example\\path','proxy%2eexample','[::1]:8080']) assert.throws(()=>validateProxy({host,port:8080}),e=>e instanceof ProfileValidationError&&e.field==='proxy.host',host);
+ for(const port of ['0x1f90','8e3','8080.0','+8080','0','65536']) assert.throws(()=>validateProxy({host:'localhost',port}),e=>e.field==='proxy.port',port);
+ assert.equal(validateProxy({host:'Proxy.Example',port:'08080'}).host,'proxy.example');
+ assert.equal(validateProxy({host:'[2001:0db8::0001]',port:'8080'}).host,'2001:db8::1');
+ assert.equal(buildProxyRules(validateProxy({type:'https',host:'::1',port:8443})),'https://[::1]:8443');
+ assert.equal(parseProxyInput('localhost:8080','https').type,'https');
+ assert.equal(parseProxyInput('https://localhost:8080','socks5').type,'https');
+});
+test('代理凭据完整保留，按协议检查 UTF-8 字节数，不截断且不写入无效配置', () => {
+ const {validateProxy}=require('../src/main/profile-validation');
+ const input={type:'http',host:'localhost',port:8080,user:' account ',pass:' '+ '密'.repeat(200)+' '};
+ assert.equal(validateProxy(input).user,input.user);assert.equal(validateProxy(input).pass,input.pass);
+ assert.throws(()=>validateProxy({...input,type:'socks5'}),e=>e.field==='proxy.pass');
+ assert.equal(validateProxy({...input,type:'socks5',user:'密'.repeat(85),pass:'密'.repeat(85)}).pass.length,85);
+ assert.throws(()=>validateProxy({...input,type:'socks5',user:'密'.repeat(86),pass:''}),e=>e.field==='proxy.user');
+ assert.throws(()=>validateProxy({...input,pass:'x'.repeat(4097)}),e=>e.field==='proxy.pass');
+ assert.equal(parseProxyInput('socks5://user:'+encodeURIComponent('密'.repeat(86))+'@localhost:1080'),null);
+ assert.throws(()=>validateProxy({host:'',pass:' '}),e=>e.field==='proxy.host');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-invalid-proxy-'));
+ try{const store=new Store(dir);const before=store.listProxies().length;assert.throws(()=>store.saveProxy({...input,host:'localhost:8080'}));assert.equal(store.listProxies().length,before);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('任务共享校验定位具体字段，保留文本并拒绝无效滚动和零超时', () => {
+ const {validateTask,TaskValidationError}=require('../src/main/task-validation');
+ const cases=[[{name:'',steps:[{type:'wait',duration:100}]},'name'],[{name:'QA',steps:[{type:'navigate',url:'https://u:p@example.com'}]},'steps.0.url'],[{name:'QA',steps:[{type:'click',selector:''}]},'steps.0.selector'],[{name:'QA',steps:[{type:'scroll',x:'oops',y:0}]},'steps.0.x'],[{name:'QA',steps:[{type:'navigate',url:'https://example.com',timeout:0}]},'steps.0.timeout'],[{name:'QA',steps:[{type:'fill',selector:'#x',text:'x'.repeat(100001)}]},'steps.0.text']];
+ for(const[input,field]of cases)assert.throws(()=>validateTask(input),e=>e instanceof TaskValidationError&&e.field===field,field);
+ const data=validateTask({name:' QA ',steps:[{type:'fill',selector:' #input ',text:'  password\n ',timeout:''},{type:'scroll',x:'',y:-25}]});
+ assert.equal(data.name,'QA');assert.equal(data.steps[0].text,'  password\n ');assert.equal(data.steps[0].timeout,15000);assert.equal(data.steps[1].x,0);
+});
+
+test('启动状态按真实步骤和时间记录，快照不可变且保留活动启动', () => {
+ const {LaunchState}=require('../src/main/launch-state');let now=1000,changes=0;
+ const state=new LaunchState({clock:()=>now,changed:()=>changes++,limit:2,ttl:100});
+ state.begin('browse','a');const initial=state.snapshot()[0];now+=20;state.stage('browse','a','proxy');assert.equal(initial.stage,'checking');
+ const proxy=state.snapshot()[0];assert.equal(proxy.startedAt,1000);assert.equal(proxy.updatedAt,1020);proxy.stage='fake';assert.equal(state.snapshot()[0].stage,'proxy');
+ now+=30;state.finish('browse','a',new Error('代理鉴权失败'));const failed=state.snapshot()[0];assert.equal(failed.status,'failed');assert.equal(failed.stage,'proxy');assert.equal(failed.durationMs,50);
+ state.stage('browse','a','opening');assert.equal(state.snapshot()[0].stage,'proxy');
+ state.begin('browse','pending');state.begin('launch','b');state.finish('launch','b');state.begin('launch','c');state.finish('launch','c');assert.equal(state.snapshot().length,2);assert.ok(state.snapshot().some(r=>r.id==='pending'));
+ now+=101;assert.equal(state.snapshot().length,1);assert.equal(state.snapshot()[0].status,'starting');assert.equal(changes,8);
+ assert.throws(()=>state.stage('browse','pending','pretend'),/Unsupported/);
+});
+test('浏览器界面握手成功、关闭和超时后清理监听器，不把建窗口当作就绪', async () => {
+ const {EventEmitter}=require('node:events');const {waitForBrowseReady}=require('../src/main/launch-readiness');
+ const window=()=>{const value=new EventEmitter();value.webContents=new EventEmitter();value.isDestroyed=()=>false;return value;};
+ const ready=window();let resolved=false;const promise=waitForBrowseReady(ready,100).then(()=>resolved=true);await Promise.resolve();assert.equal(resolved,false);ready._starBrowseReady=true;ready.emit('star:browse-ready');await promise;assert.equal(ready.listenerCount('closed'),0);assert.equal(ready.webContents.listenerCount('did-fail-load'),0);
+ const closed=window();const closePromise=waitForBrowseReady(closed,100);closed.emit('closed');await assert.rejects(closePromise,/准备期间已关闭/);assert.equal(closed.listenerCount('star:browse-ready'),0);
+ const timeout=window();await assert.rejects(waitForBrowseReady(timeout,5),/准备超时/);assert.equal(timeout.listenerCount('closed'),0);
+ const failed=window();const failPromise=waitForBrowseReady(failed,100);failed.webContents.emit('did-fail-load',{},-3,'aborted','file:fixture',true);assert.equal(failed.listenerCount('closed'),1);failed.webContents.emit('did-fail-load',{},-6,'FILE_NOT_FOUND','file:fixture',true);await assert.rejects(failPromise,/FILE_NOT_FOUND/);assert.equal(failed.listenerCount('closed'),0);
+});
+
+test('原生硬件模式不发送 CPU Emulation，也不允许 RAM 不一致时被 JS fallback 掩盖',async()=>{
+ const {applyProtocol}=require('../src/main/fingerprint-protocol');const fp={...generateFingerprint('accepted-hardware',{language:'fr-FR',timezone:'Europe/Paris'}),hardwareConcurrency:4,deviceMemory:4,nativeHardware:true};const calls=[];
+ const send=async(method,params)=>{calls.push(method);if(method==='Runtime.evaluate')return {result:{value:{cpu:4,memory:4,secure:true}}};return {};};
+ await applyProtocol(send,fp,{metrics:false,worker:true});assert.ok(!calls.includes('Emulation.setHardwareConcurrencyOverride'));
+ await assert.rejects(applyProtocol(async(method,params)=>method==='Runtime.evaluate'?{result:{value:{cpu:4,memory:16,secure:true}}}:send(method,params),fp,{metrics:false,worker:true}),/原生硬件策略未生效/);
+ await assert.rejects(applyProtocol(async(method,params)=>method==='Runtime.evaluate'?{result:{value:{cpu:10,memory:4,secure:false}}}:send(method,params),fp,{metrics:false,worker:true}),/原生硬件策略未生效/);
+ await applyProtocol(async(method,params)=>method==='Runtime.evaluate'?{result:{value:{cpu:4,secure:false}}}:send(method,params),fp,{metrics:false,worker:true});
+});
+
+test('原生内核拒绝缺失或未验收报告，报告不合格时先拒绝而不读取整个浏览器',async()=>{
+ const {resolveNativeKernel}=require('../src/main/native-kernel');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-invalid-kernel-'));
+ try{
+  const report=path.join(dir,'acceptance.json');fs.writeFileSync(report,JSON.stringify({schemaVersion:1,status:'hardware-rejected'}));
+  await assert.rejects(resolveNativeKernel({STAR_NATIVE_KERNEL_EXECUTABLE:'missing-browser'}),/必须同时设置/);
+  await assert.rejects(resolveNativeKernel({STAR_NATIVE_KERNEL_EXECUTABLE:'missing-browser',STAR_NATIVE_KERNEL_ACCEPTANCE:path.join(dir,'missing-report')}),/无法读取原生内核验收报告/);
+  await assert.rejects(resolveNativeKernel({STAR_NATIVE_KERNEL_EXECUTABLE:'missing-browser',STAR_NATIVE_KERNEL_ACCEPTANCE:report}),/缺少有效的原生硬件验收报告/);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('书签校验定位具体字段，拒绝凭据网址且规范化标题和 URL',()=>{
+ const {validateBookmark,BookmarkValidationError}=require('../src/main/bookmark-validation');
+ assert.deepEqual(validateBookmark({title:'  测试书签  ',url:' HTTPS://EXAMPLE.COM:443/阅读?q=中文 '}),{title:'测试书签',url:'https://example.com/%E9%98%85%E8%AF%BB?q=%E4%B8%AD%E6%96%87'});
+ for(const [value,field] of [
+  [{title:' ',url:'https://example.com'},'title'],
+  [{title:'x'.repeat(513),url:'https://example.com'},'title'],
+  [{title:'QA',url:''},'url'],
+  [{title:'QA',url:'javascript:alert(1)'},'url'],
+  [{title:'QA',url:'https:example.com'},'url'],
+  [{title:'QA',url:'https://example.com/line\nnext'},'url'],
+  [{title:'QA',url:'https://user:secret@example.com'},'url'],
+  [{title:'QA',url:'https://example.com/'+ 'x'.repeat(4096)},'url']
+ ])assert.throws(()=>validateBookmark(value),e=>e instanceof BookmarkValidationError&&e.field===field);
+});
+
+test('书签部分更新保留旧字段，新增、更新和删除遇到磁盘失败均完整回滚',(t)=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-bookmark-failure-'));
+ try{
+  const store=new Store(dir),saved=store.transaction(()=>store.addBookmark({title:'安全书签',url:'https://example.com/'}));
+  store.transaction(()=>store.updateBookmark(saved.id,{title:'更新名称'}));
+  assert.equal(new Store(dir).listBookmarks().find(b=>b.id===saved.id).url,saved.url);
+  const before=fs.readFileSync(store.file,'utf8'),records=structuredClone(store.listBookmarks()),revision=store.revision();
+  const rename=t.mock.method(fs,'renameSync',()=>{throw new Error('disk full');});
+  for(const run of [()=>store.addBookmark({title:'新书签',url:'https://example.org/'}),()=>store.updateBookmark(saved.id,{url:'https://example.org/changed'}),()=>store.removeBookmark(saved.id)]){
+   assert.throws(()=>store.transaction(run),/disk full/);
+   assert.deepEqual(store.listBookmarks(),records);assert.equal(store.revision(),revision);assert.equal(fs.readFileSync(store.file,'utf8'),before);
+  }
+  rename.mock.restore();
+  store.transaction(()=>store.updateBookmark(saved.id,{url:'https://example.org/retry'}));
+  assert.equal(new Store(dir).listBookmarks().find(b=>b.id===saved.id).url,'https://example.org/retry');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

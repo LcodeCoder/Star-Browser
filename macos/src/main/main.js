@@ -31,6 +31,7 @@ if (process.env.TFB_USER_DATA_DIR) {
 }
 const TEST_MODE = process.env.TFB_TEST_MODE === "1";
 app.setName("Star Browser");
+require("./electron-fingerprint").enableFingerprintChannel(app);
 
 function bindProxyRequestAuthentication(request, ses) {
   let attempted = false;
@@ -52,12 +53,19 @@ let win; // 控制台（管理）窗口
 let liteWin; // 历史 Lite 单开窗口（仅在 Lite 模式下使用）
 let store;
 const profileCommands=new Map(),startupJobs=new Map();
+const launchState=new (require('./launch-state').LaunchState)({changed:()=>{
+  for(const window of BrowserWindow.getAllWindows())if(!window.isDestroyed()&&!window._profile)window.webContents.send('star:invalidate');
+}});
 function registerProfileCommand(name,handler){
   const run=(event,...args)=>{
     if(["browse","launch","update","remove"].includes(name))require("./profile-backups").assertProfileUnlocked(args[0]);
+    const active=["browse","launch"].some(kind=>startupJobs.has(kind+":"+args[0]));
+    if(["update","remove"].includes(name)&&active)throw new Error("环境正在启动，请等待窗口打开后再修改");
     if(!["browse","launch"].includes(name))return handler(event,...args);
     const key=name+":"+args[0];if(startupJobs.has(key))return startupJobs.get(key);
-    const job=Promise.resolve().then(()=>handler(event,...args));startupJobs.set(key,job);
+    if(active)throw new Error("环境正在通过另一方式启动，请等待本次启动完成");
+    launchState.begin(name,args[0]);
+    const job=Promise.resolve().then(()=>handler(event,...args)).then(result=>{launchState.finish(name,args[0]);return result;},error=>{launchState.finish(name,args[0],error);throw error;});startupJobs.set(key,job);
     return job.finally(()=>startupJobs.delete(key));
   };
   profileCommands.set(name,run);ipcMain.handle("profiles:"+name,run);
@@ -65,11 +73,8 @@ function registerProfileCommand(name,handler){
 let MODE; // 'lite' | 'pro' | 'changyi'，由打包时注入的 tfbMode 决定（无竞态，无需共享文件）
 
 // 指纹核心源码（一次性读取）
-const { applyProtocol, metadata: fingerprintMetadata } = require("./fingerprint-protocol");
-const FP_CORE_SRC = fs.readFileSync(
-  path.join(__dirname, "../extension/fp-core.js"),
-  "utf-8",
-);
+const { metadata: fingerprintMetadata } = require("./fingerprint-protocol");
+const { fingerprintSource } = require("./fingerprint-runtime");
 
   function bindLangHeader(wc, lang) {
     try {
@@ -110,26 +115,14 @@ function prepareGuestFingerprint(wc, fingerprint) {
   if (wc.__starFingerprintPreparing) return wc.__starFingerprintPreparing;
   if(!wc.__starDebuggerLifecycle){
     wc.__starDebuggerLifecycle=true;
-    wc.debugger.on("detach",()=>{
-      wc.__tfbFpInjected=false;
-      if(wc.__starTargetHandler)wc.debugger.removeListener("message",wc.__starTargetHandler);
-      wc.__starTargetsBound=false;
-    });
-    wc.on("devtools-closed",()=>{if(!wc.isDestroyed())prepareGuestFingerprint(wc,wc.session.__tfbFp||fingerprint).catch(error=>dbg("DEVTOOLS-RESTORE "+error.message));});
+    // Fingerprint configuration lives on the separate browser connection during DevTools use.
+    wc.on('devtools-closed',()=>{if(!wc.isDestroyed()&&!wc.debugger.isAttached())try{wc.debugger.attach('1.3');}catch{}});
   }
-  const source=FP_CORE_SRC+"\n;try{if(window.installFingerprint)window.installFingerprint("+JSON.stringify(fingerprint)+");}catch(e){}";
+  const sourceFor=fp=>fingerprintSource({...fp,userAgentMetadata:fingerprintMetadata(fp)});
   const job=(async()=>{
     await require("./fingerprint-protocol").captureNativeHints(wc.hostWebContents);
     const api=wc.debugger;if(!api.isAttached())api.attach("1.3");
-    const send=(method,params)=>new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>reject(new Error("浏览器配置超时："+method)),5000);
-      api.sendCommand(method,params).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
-    });
-    await send("Page.enable",{});
-    await applyProtocol(send,fingerprint);
-    await require("./fingerprint-targets").bindElectronTargets(wc,fingerprint,source);
-    if(wc.__starFpScript)await send("Page.removeScriptToEvaluateOnNewDocument",{identifier:wc.__starFpScript}).catch(()=>{});
-    wc.__starFpScript=(await send("Page.addScriptToEvaluateOnNewDocument",{source})).identifier;
+    await require("./electron-fingerprint").prepareElectronFingerprint(app,wc,fingerprint,sourceFor);
     wc.__tfbFingerprint=fingerprint;wc.__tfbFpInjected=true;
     bindLangHeader(wc,fingerprint.language);
     dbg("GUEST-FP-READY id="+wc.id+" tz="+fingerprint.timezone+" lang="+fingerprint.language);
@@ -304,25 +297,14 @@ function resolveStartUrl(u) {
   return u;
 }
 
-// 为每个环境生成独立的 webview 预加载文件：把 fp-core 源码(FP_SRC) 与该环境指纹配置(CFG) 内联，
-// 在 document_start 直接注入 MAIN world。CFG 定义为变量，注入脚本引用它，避免引号/字面量冲突。
+// Preload and CDP use the same installer, with no public page configuration globals.
 function writeWebviewPreload(profile, fingerprint) {
   const dir = path.join(app.getPath("userData"), "webview-preloads");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, (profile.id || "lite") + ".js");
-  // ⚠️ 关键修复：fp-core 源码必须作为「代码」注入主世界执行。
-  // 旧实现把 FP_SRC 用 JSON.stringify 包成字符串字面量，再 webFrame.executeJavaScript(FP_SRC+'...')，
-  // 结果 executeJavaScript 收到的整段被当成「字符串字面量」而非「源码」——installFingerprint 永远不被定义，
-  // 整套指纹伪装（时区/语言/UA/canvas…）从未真正注入，浏览器一直跑真实宿主机（中文/东八区）。
-  // 正确做法：把「源码 + 调用」拼成一个完整代码字符串，整体 JSON.stringify 成单一参数传给 executeJavaScript。
-  const call =
-    "\n;try{ if(window.installFingerprint) window.installFingerprint(" +
-    JSON.stringify(fingerprint) +
-    "); }catch(e){}";
-  const code = FP_CORE_SRC + call;
+  const code = fingerprintSource({...fingerprint,userAgentMetadata:fingerprintMetadata(fingerprint)});
   const content = [
     "'use strict';",
-    "const CFG = " + JSON.stringify(fingerprint) + ";",
     "const { webFrame, ipcRenderer } = require('electron');",
     "document.addEventListener('input',event=>{if(event.isTrusted)ipcRenderer.send('star:pageEdited',true);},true);",
     "document.addEventListener('submit',event=>setTimeout(()=>{if(!event.defaultPrevented)ipcRenderer.send('star:pageEdited',false);},0),true);",
@@ -358,8 +340,8 @@ function resolveMode() {
 
 // ---------------- 中文应用菜单（替代 Electron 默认英文菜单）----------------
 function isDevToolsShortcut(input){return input.key==="F12"||((input.code==="KeyI"||input.key.toLowerCase()==="i")&&((input.control&&input.shift)||(input.meta&&input.alt)));}
-function sendBrowserCommand(command, fallback) {
-  const focused=BrowserWindow.getFocusedWindow();
+function sendBrowserCommand(command, fallback, targetWindow) {
+  const focused=targetWindow || BrowserWindow.getFocusedWindow();
   if(focused?._profile)focused.webContents.send('star:browserCommand',command);
   else if(focused&&fallback)fallback(focused);
 }
@@ -438,6 +420,7 @@ function setAppMenu(mode) {
         { label:"在页面中查找",accelerator:"CmdOrCtrl+F",click:()=>sendBrowserCommand("find",w=>w.webContents.send("star:browserCommand","search")) },
         { label:"搜索或输入网址",accelerator:"CmdOrCtrl+L",click:()=>sendBrowserCommand("address") },
         { label:"历史记录",accelerator:"CmdOrCtrl+Y",click:()=>sendBrowserCommand("history") },
+        { id:"bookmarkCurrentPage",label:"收藏当前页",accelerator:"CmdOrCtrl+D",click:(_item,win)=>sendBrowserCommand("bookmark",undefined,win) },
         { label:"工作台快速操作",accelerator:"CmdOrCtrl+K",click:()=>{if(win&&!win.isDestroyed()){win.show();win.focus();win.webContents.send("star:browserCommand","palette");}} },
       ],
     },
@@ -541,7 +524,6 @@ function createBrowseWindow(profile, fingerprint) {
     preferences: store?.preferences() || {},
     proxy: profile.proxy || null,
     webrtc: profile.webrtc || "disable",
-    fpSrc: FP_CORE_SRC,
     preloadURL: pathToFileURL(
       writeWebviewPreload(profile, fp),
     ).toString(),
@@ -716,7 +698,7 @@ function createWindow() {
 
 function startPro() {
   registerIpc();
-  require("./workbench").registerWorkbench(store,{starting:()=>[...startupJobs.keys()].map(key=>key.slice(key.indexOf(":")+1)),commands:(name,args)=>{const handler=profileCommands.get(name);if(!handler)throw new Error("操作不存在");return handler(null,...args);}});
+  require("./workbench").registerWorkbench(store,{launches:()=>launchState.snapshot(),starting:()=>[...startupJobs.keys()].map(key=>key.slice(key.indexOf(":")+1)),commands:(name,args)=>{const handler=profileCommands.get(name);if(!handler)throw new Error("操作不存在");return handler(null,...args);}});
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -756,86 +738,13 @@ function startChangyi() {
 }
 
 // ---------------- IPC ----------------
-// 判断代理是否「真正可用」：不仅 TCP 通，还要能完成握手拿到出口。
-// - 带鉴权的 SOCKS5（走网关逻辑）：用 connectSocks5 做一次真实 SOCKS5 握手（含鉴权 + connect 测试目标），
-//   成功才算可用；否则上游虽 TCP 可达但鉴权失败/握手拒绝（如示例环境·US 的 st02 返回 REP=0x4/0x5），
-//   设进去仍会 502 打不开网站。这是「端口通但代理不可用」的关键防护。
-// - 其它类型（无鉴权 SOCKS5 / HTTP 代理）：TCP 层探测兜底。
+// 实际验证代理协议、鉴权、目标连接和 HTTP 响应，期限内取消失败连接。
 async function isProxyUsable(proxy) {
-  if (!proxy || !proxy.host || !proxy.port) return false;
-  try {
-    if (proxy.type === "socks5" && (proxy.user || proxy.pass)) {
-      const { connectSocks5 } = require("./local-proxy");
-      const withTimeout = (p, ms) =>
-        Promise.race([
-          p,
-          new Promise((_, rej) =>
-            setTimeout(() => rej(new Error("probe-timeout")), ms),
-          ),
-        ]);
-      try {
-        // 关键：不能只验证 SOCKS5 握手成功——「端口通但不转发真实流量」的坏代理(如示例环境·US 的 st02)
-        // 握手能过，但转发任何网站都失败(Host unreachable)。必须建隧道后真正发一次 HTTP GET，
-        // 能拿到 2xx/3xx 响应才算可用，否则判定不可用 → 触发回退直连 + 提示。
-        const s = await withTimeout(
-          connectSocks5(proxy, TEST_MODE ? "127.0.0.1" : "example.com",
-            TEST_MODE ? Number(process.env.TFB_TEST_ORIGIN_PORT) : 80),
-          8000,
-        );
-        const ok = await withTimeout(
-          new Promise((res) => {
-            let buf = "";
-            const onData = (c) => {
-              buf += c.toString("latin1");
-              if (buf.indexOf("\r\n") >= 0) {
-                try {
-                  s.destroy();
-                } catch (_) {}
-                const line = buf.split("\r\n")[0];
-                res(/^HTTP\/\d\.\d [23]\d\d/.test(line));
-              }
-            };
-            s.on("data", onData);
-            s.on("error", () => res(false));
-            try {
-              s.write(
-                "GET / HTTP/1.1\r\nHost: " + (TEST_MODE ? "127.0.0.1" : "example.com") + "\r\nConnection: close\r\n\r\n",
-              );
-            } catch (_) {
-              res(false);
-            }
-          }),
-          8000,
-        );
-        return ok === true;
-      } catch (_) {
-        return false;
-      }
-    }
-  } catch (_) {
-    return false;
-  }
-  // 其它类型（无鉴权 SOCKS5 / HTTP 代理）：TCP 层探测兜底
-  return new Promise((resolve) => {
-    let s;
-    try {
-      s = require("net").connect(Number(proxy.port), String(proxy.host));
-    } catch (_) {
-      return resolve(false);
-    }
-    let settled = false;
-    const done = (ok) => {
-      if (settled) return;
-      settled = true;
-      try {
-        s.destroy();
-      } catch (_) {}
-      resolve(ok);
-    };
-    s.on("connect", () => done(true));
-    s.on("error", () => done(false));
-    s.setTimeout(3000, () => done(false));
+  const result = await require('./proxy-readiness').probeProxy(proxy, {
+    ...(TEST_MODE ? {targetUrl: 'http://127.0.0.1:' + Number(process.env.TFB_TEST_ORIGIN_PORT) + '/'} : {}),
+    timeout: 6000,
   });
+  return result.ok;
 }
 
 // 检测本机系统代理（Windows：注册表 Internet Settings）。返回 {enabled,type,host,port}。
@@ -975,7 +884,9 @@ function registerIpc() {
     const p = store.get(id);
     if (!p) throw new Error("环境不存在");
     if (p.archived) throw new Error("请先恢复归档环境");
+    if (p.proxy?.host) launchState.stage('launch',id,'proxy');
     if (p.proxy?.host && !(await isProxyUsable(p.proxy))) throw new Error("代理不可达，启动已阻止。请检查地址、端口和账号密码。");
+    launchState.stage('launch',id,'locale');
     let fp;
     try {
       const r = await resolveAlignedFingerprint(p);
@@ -990,7 +901,7 @@ function registerIpc() {
       fp.webrtc = p.webrtc || "disable";
     }
     await require("./fingerprint-protocol").captureNativeHints(e?.sender||win?.webContents);
-    const res = await launchProfile(p, paths, fp);
+    const res = await launchProfile(p, paths, fp,{onStage:stage=>launchState.stage('launch',id,stage)});
     store.touchOpened(id);
     store.activity("启动浏览器", p.name, "本机 Chrome");
     return { pid: res.pid, chrome: res.chrome, ua: res.fingerprint.userAgent, extensionId: res.extensionId };
@@ -1005,13 +916,16 @@ function registerIpc() {
     if (p.archived) throw new Error("请先恢复归档环境");
     const existing = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && !w._starClosing && w._profile?.id === id);
     if (existing) { existing.show(); existing.focus(); return { ok: true, reused: true }; }
+    if (p.proxy?.host) launchState.stage('browse',id,'proxy');
     if (p.proxy?.host && !(await isProxyUsable(p.proxy))) throw new Error("代理不可达，启动已阻止。请检查地址、端口和账号密码。");
     // 预创建环境分区会话（与后续 webview 同一 partition），让 geo 探测与网页加载走「同一个出口 IP」。
     // 这是根治轮换代理下「geo 时区 ≠ 检测站所见时区」(Timezone Mismatch) 的关键：探测与浏览同源同出口。
+    launchState.stage('browse',id,'extensions');
     const envSes = session.fromPartition("persist:tfb-env-" + p.id);
     await require("./extensions").getExtensionLibrary()?.loadForSession(envSes,p);
     // 首屏即对齐出口 IP 真实地理：先拿到 geo 再生成 fp0，确保检测站在「文档开头」抢读到的第一值
     // 就是与 IP 一致的时区/语言，从根上消除系统时差（首屏用错时区、align 滞后补救仍会被抢读）。
+    launchState.stage('browse',id,'locale');
     const hasProxy = !!(p.proxy && p.proxy.host);
     let fp0;
     let geo = null;
@@ -1078,7 +992,10 @@ function registerIpc() {
       envSes.__tfbFp = fp0;
       envSes.__tfbEnvId = p.id;
     } catch (_) {}
+    launchState.stage('browse',id,'opening');
     const win = createBrowseWindow(p, fp0);
+    try { await require('./launch-readiness').waitForBrowseReady(win); }
+    catch(error) {if(!win.isDestroyed())win.close();throw error;}
     // 网络环境提示：白名单代理（如 osdwan）可能只放行部分站点，其余回退直连 → 检测出国内网络；
     // 当真实出口地理与预设地区不符时，给浏览器侧一个醒目提示，便于用户发现代理未生效。
     try {
@@ -1119,7 +1036,7 @@ function registerIpc() {
   // 浏览窗口就绪 -> 下发指纹配置
   ipcMain.on("browse:ready", (e) => {
     const w = BrowserWindow.fromWebContents(e.sender);
-    if (w && w._init) { w._starBrowseReady=true; w.webContents.send("browse:init", w._init); }
+    if (w && w._init) { w._starBrowseReady=true; w.webContents.send("browse:init", w._init); w.emit("star:browse-ready"); }
   });
 
   // 浏览窗口保存设置（Lite / Pro 应用内打开共用）：持久化 + 重生成指纹，返回新配置
@@ -1156,7 +1073,6 @@ function registerIpc() {
       fingerprint: fp,
       proxy: cur.proxy,
       webrtc: cur.webrtc || "disable",
-      fpSrc: FP_CORE_SRC,
       // ⚠️ 必须回传国家/时区/语言及其「手动锁定」标志：渲染端设置面板靠这些字段回填下拉框。
       // 缺了它们就会出现「保存后重开面板，时区又变回自动跟随」（profile 读不到 timezoneManual）。
       country: cur.country,
@@ -1253,7 +1169,7 @@ function registerIpc() {
             .setProxy({ proxyRules: rules, proxyBypassRules: "<-loopback>" })
             .catch(() => {});
           // HTTP 代理带鉴权：Chromium 支持 HTTP 代理 login 事件，保留兜底
-          const user = (proxy.user || "").toString().trim();
+          const user = (proxy.user || "").toString();
           if (user && proxy.type !== "socks5") {
             wc.session.__tfbProxyCreds = {
               user,
@@ -1409,10 +1325,10 @@ function registerIpc() {
 
   // ---------------- 收藏夹（全局共享，跨环境） ----------------
   ipcMain.handle("bookmarks:list", () => store.listBookmarks());
-  ipcMain.handle("bookmarks:add", (e, bm) => store.addBookmark(bm || {}));
-  ipcMain.handle("bookmarks:remove", (e, id) => store.removeBookmark(id));
+  ipcMain.handle("bookmarks:add", (e, bm) => store.transaction(()=>store.addBookmark(bm || {})));
+  ipcMain.handle("bookmarks:remove", (e, id) => store.transaction(()=>store.removeBookmark(id)));
   ipcMain.handle("bookmarks:update", (e, id, patch) =>
-    store.updateBookmark(id, patch || {}),
+    store.transaction(()=>store.updateBookmark(id, patch || {})),
   );
   // 云端托管收藏夹合并：以 id 为键，官方条目覆盖同 id 官方条目；用户自加(source=user)永不被动。
   ipcMain.handle("bookmarks:mergeCloud", (e, list) => {
@@ -1776,25 +1692,18 @@ function registerIpc() {
     }
   });
 
-  // 清空某环境分区下的全部 Cookie
+  // Cookie removals can partially fail; never report every attempted item as cleared.
   ipcMain.handle("cookies:clear", async (e, envId) => {
     const part = "persist:tfb-env-" + (envId || "lite");
     const ses = session.fromPartition(part);
     try {
-      const cs = await ses.cookies.get({});
+      const cs = await ses.cookies.get({});let cleared=0,failed=0;
       for (const c of cs) {
-        const url =
-          (c.secure ? "https://" : "http://") +
-          (c.domain || "").replace(/^\./, "") +
-          (c.path || "/");
-        try {
-          await ses.cookies.remove(url, c.name);
-        } catch (_) {}
+        const url=(c.secure ? "https://" : "http://")+(c.domain || "").replace(/^\./, "")+(c.path || "/");
+        try { await ses.cookies.remove(url,c.name);cleared++; } catch { failed++; }
       }
-      return { ok: true, cleared: cs.length };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
+      return {ok:failed===0,cleared,failed,...(failed?{error:`已清除 ${cleared} 条 Cookie，${failed} 条清除失败，请重试。`}:{})};
+    } catch (err) { return {ok:false,error:err.message}; }
   });
 
   // 广告位 / 帮助入口：打开外部链接（客服、进群、购买 IP）
@@ -1976,7 +1885,6 @@ function registerIpc() {
       fingerprint: fp,
       proxy: cur.proxy,
       webrtc: cur.webrtc || "disable",
-      fpSrc: FP_CORE_SRC,
       // ⚠️ 必须回传国家/时区/语言及其「手动锁定」标志：渲染端设置面板靠这些字段回填下拉框。
       // 缺了它们就会出现「保存后重开面板，时区又变回自动跟随」（profile 读不到 timezoneManual）。
       country: cur.country,
@@ -2192,8 +2100,8 @@ function withTimeout(promise, ms) {
   });
 }
 
-// 解析「出口 IP 真实地理」：代理且可达 -> 代理出口 geo；代理不可用/无代理 -> 本机直连出口 geo。
-// 二者皆失败返回 null（上层交由 generateFingerprint 用国家默认兜底）。
+// 解析出口地域：有代理仅使用代理出口；无代理查询本机出口。
+// 代理不可用时保留代理路由并返回未知地域，不借用本机出口数据。
 // 严禁回退「本机 OS 时区」(hostTimeZone)：本机 OS 时区(如上海)可能 ≠ 真实出口 IP 地理(如洛杉矶)，
 // 一旦回退它，JS 时区与检测站所见出口 IP 地理对不上 -> 必报系统时差。
 async function resolveExitGeo(profile, ses, proxyMs) {
@@ -2203,9 +2111,7 @@ async function resolveExitGeo(profile, ses, proxyMs) {
   }
   const hasProxy = !!(profile.proxy && profile.proxy.host);
   if (hasProxy) {
-    // 先判「代理是否真正可用」：不可用(死代理/网关不通)则浏览器会回退直连，
-    // 此时指纹必须按「直连出口」对齐 —— 否则中国用户配了死代理、浏览器直连中国出口，
-    // 指纹却设成纽约/洛杉矶 → whoer 看到「中国 IP + 美国时区」→ 必报时差。
+    // 真实协议与转发检查失败时仍保留代理身份；不得回退查询本机出口。
     let reachable = false;
     try {
       reachable = await withTimeout(isProxyUsable(profile.proxy), 5000);
@@ -2213,19 +2119,9 @@ async function resolveExitGeo(profile, ses, proxyMs) {
       reachable = false;
     }
     if (!reachable) {
-      dbg("GEO 代理不可用(死代理) -> 按直连出口对齐");
-      try {
-        const r = await checkLocalGeo();
-        if (r.ok)
-          return {
-            country: r.country,
-            timezone: r.timezone,
-            locale: r.locale,
-            utcOffset: r.utcOffset,
-            viaProxy: false,
-          };
-      } catch (_) {}
-      return { viaProxy: false };
+      // Keep proxy identity and routing; an unavailable proxy never supplies host geography.
+      if (ses) await ses.setProxy({proxyRules: require('./proxy-parse').buildProxyRules(profile.proxy), proxyBypassRules: '<-loopback>'});
+      return {viaProxy: true, error: '代理不可用，尚未取得出口地域信息'};
     }
     // ① 走代理直接探测出口地理（geo-api 在代理下可达时最准）
     try {
@@ -2347,7 +2243,7 @@ async function applyProxyToSession(ses, proxy) {
       await ses
         .setProxy({ proxyRules: rules, proxyBypassRules: "<-loopback>" })
         .catch(() => {});
-      const user = (proxy.user || "").toString().trim();
+      const user = (proxy.user || "").toString();
       if (user && proxy.type !== "socks5") {
         ses.__tfbProxyCreds = { user, pass: (proxy.pass || "").toString(), host: proxy.host, port: Number(proxy.port) };
 
@@ -2503,8 +2399,7 @@ async function checkLocalGeo() {
 // 否则自动对齐到出口 IP 地理时区（地理解析失败则回退国家默认值）。
 // 语言：langManual=true 保留用户设定；否则跟随 IP 地理语言。
 async function resolveAlignedFingerprint(profile, ses) {
-  // 与首屏 fp0 复用同一套「实际出口」判定：代理 geo 失败时若代理本身不可用，
-  // 说明会话已回退直连，必须按直连出口对齐，否则两条链路会算出不同时区（首屏 vs 重对齐打架）。
+  // 与首屏复用同一出口判定。代理地域未知时沿用环境配置，不混入本机地域。
   const geo = await resolveExitGeo(profile, ses, 9000).catch(() => null);
   const hasProxy = !!(profile.proxy && profile.proxy.host);
   const opts = { os: profile.os, fingerprint: profile.fingerprint, country: profile.country };
@@ -2541,6 +2436,8 @@ async function resolveAlignedFingerprint(profile, ses) {
   fp.webrtc = profile.webrtc || "disable";
   return { fingerprint: fp, geo };
 }
+
+app.on("will-quit", () => require("./local-proxy").closeGateways());
 
 app.whenReady().then(() => {
   store = new Store(path.join(app.getPath("userData"), "data"));

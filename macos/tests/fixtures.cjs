@@ -35,9 +35,35 @@ async function startOrigin() {
       const bytes=32000,sound=Buffer.alloc(44+bytes,128);sound.write('RIFF',0);sound.writeUInt32LE(36+bytes,4);sound.write('WAVEfmt ',8);sound.writeUInt32LE(16,16);sound.writeUInt16LE(1,20);sound.writeUInt16LE(1,22);sound.writeUInt32LE(8000,24);sound.writeUInt32LE(8000,28);sound.writeUInt16LE(1,32);sound.writeUInt16LE(8,34);sound.write('data',36);sound.writeUInt32LE(bytes,40);
       res.writeHead(200,{'Content-Type':'audio/wav','Content-Length':sound.length});res.end(sound);return;
     }
-    if(req.url.startsWith('/fingerprint-worker.js')){
-      res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Service-Worker-Allowed':'/'});
-      res.end(`const read=()=>({ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,tz:new Intl.DateTimeFormat().resolvedOptions().timeZone,offset:new Date('2026-01-15T12:00:00Z').getTimezoneOffset()});if(typeof ServiceWorkerGlobalScope!=='undefined'&&self instanceof ServiceWorkerGlobalScope){self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));self.addEventListener('message',event=>event.ports[0].postMessage(read()));}else if(typeof SharedWorkerGlobalScope!=='undefined'&&self instanceof SharedWorkerGlobalScope){self.onconnect=event=>event.ports[0].postMessage(read());}else postMessage(read());`);return;
+    if(req.url.startsWith('/fingerprint-worker.js')||req.url.startsWith('/fingerprint-module.js')){
+      res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Service-Worker-Allowed':'/','Accept-CH':'Sec-CH-UA-Arch, Sec-CH-UA-Platform-Version, Sec-CH-UA-Full-Version-List'});
+      const module=req.url.startsWith('/fingerprint-module.js');
+      res.end((module?"import {dependency} from '/fingerprint-dependency.js';\n":'')+`
+const read=()=>({markers:['installFingerprint','__FP_ACTIVE__','__FP_CONFIG__'].filter(key=>key in globalThis),ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,locale:new Intl.DateTimeFormat().resolvedOptions().locale,tz:new Intl.DateTimeFormat().resolvedOptions().timeZone,offset:new Date('2026-01-15T12:00:00Z').getTimezoneOffset()});
+const first=read(),instance=crypto.randomUUID(),hintKeys=['architecture','bitness','platformVersion','model','wow64','fullVersionList','uaFullVersion','formFactors'];
+const firstHints=navigator.userAgentData?.getHighEntropyValues(hintKeys);
+async function semantics(){const fail=async run=>{try{await run();return false;}catch(error){return error instanceof TypeError;}};const getter=Object.getOwnPropertyDescriptor(WorkerNavigator.prototype,'deviceMemory').get;const data=navigator.userAgentData,proto=Object.getPrototypeOf(data);return {memoryReceiver:await fail(()=>getter.call({})),uaReceiver:await fail(()=>proto.getHighEntropyValues.call({},[])),uaOmitted:await fail(()=>data.getHighEntropyValues()),uaNull:await fail(()=>data.getHighEntropyValues(null)),uaNumber:await fail(()=>data.getHighEntropyValues(1)),jsonReceiver:await fail(()=>proto.toJSON.call({})),name:getter.name,length:getter.length,prototype:Object.hasOwn(getter,'prototype'),native:getter.toString().includes('[native code]'),toStringPrototype:Object.hasOwn(Function.prototype.toString,'prototype'),languagesStable:navigator.languages===navigator.languages,languagesFrozen:Object.isFrozen(navigator.languages),brandsFrozen:Object.isFrozen(data.brands),brandFrozen:Object.isFrozen(data.brands[0]),jsonBrandsFrozen:Object.isFrozen(data.toJSON().brands)};}
+let connected=0;
+async function snapshot(options={}){
+ const scopeType=typeof ServiceWorkerGlobalScope!=='undefined'&&self instanceof ServiceWorkerGlobalScope?'service_worker':typeof SharedWorkerGlobalScope!=='undefined'&&self instanceof SharedWorkerGlobalScope?'shared_worker':'worker';
+ const result={scopeType,...read(),first,hints:await firstHints,uaData:navigator.userAgentData?.toJSON(),instance,connected,semantics:await semantics(),module:${module?'dependency':"null"}};
+ if(options.headers){await fetch('/client-hints?worker-opt-in');result.headers=await fetch('/client-hints?worker-read').then(r=>r.json());}
+ if(options.nested)result.nested=await new Promise((resolve,reject)=>{const child=new Worker('/fingerprint-worker.js?nested');child.onmessage=e=>{child.terminate();resolve(e.data);};child.onerror=e=>reject(new Error(e.message));});
+ return result;
+}
+if(typeof ServiceWorkerGlobalScope!=='undefined'&&self instanceof ServiceWorkerGlobalScope){
+ self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+ self.addEventListener('message',event=>event.waitUntil(snapshot(event.data).then(value=>event.ports[0].postMessage(value)).catch(error=>event.ports[0].postMessage({error:error.message}))));
+ self.addEventListener('fetch',event=>{if(new URL(event.request.url).pathname==='/service-snapshot')event.respondWith(snapshot({headers:true}).then(value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}})));});
+}else if(typeof SharedWorkerGlobalScope!=='undefined'&&self instanceof SharedWorkerGlobalScope){
+ self.onconnect=event=>{connected++;const port=event.ports[0];port.onmessage=event=>snapshot(event.data).then(value=>port.postMessage(value)).catch(error=>port.postMessage({error:error.message}));port.start();snapshot().then(value=>port.postMessage(value)).catch(error=>port.postMessage({error:error.message}));};
+}else{snapshot({nested:new URL(location.href).searchParams.has('parent')}).then(value=>postMessage(value));self.onmessage=event=>snapshot(event.data).then(value=>postMessage(value));}
+`);return;
+    }
+    if(req.url.startsWith('/fingerprint-dependency.js')){res.writeHead(200,{'Content-Type':'text/javascript'});res.end("export const dependency='native-module-import';");return;}
+    if(req.url.startsWith('/fingerprint-frame')){
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self'"});
+      res.end(`<!doctype html><script>parent.postMessage({starFrame:{markers:['installFingerprint','__FP_ACTIVE__','__FP_CONFIG__'].filter(key=>key in globalThis),ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,locale:new Intl.DateTimeFormat().resolvedOptions().locale,tz:new Intl.DateTimeFormat().resolvedOptions().timeZone,offset:new Date('2026-01-15T12:00:00Z').getTimezoneOffset(),screen:{width:screen.width,height:screen.height},dpr:devicePixelRatio,screenMedia:matchMedia('(device-width: 1600px) and (device-height: 900px)').matches,dprMedia:matchMedia('(resolution: 1.5dppx)').matches}},'*');</script>`);return;
     }
     if(req.url.startsWith('/sync')){
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});
@@ -62,7 +88,7 @@ async function startOrigin() {
     }
     res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
     res.end(`<!doctype html><html><head><title>macOS 浏览器测试页</title>
-<script>window.early={ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:navigator.languages,tz:Intl.DateTimeFormat().resolvedOptions().timeZone,cores:navigator.hardwareConcurrency,width:screen.width,height:screen.height,webdriver:navigator.webdriver};</script>
+<script>window.early={markers:['installFingerprint','__FP_ACTIVE__','__FP_CONFIG__'].filter(key=>key in window),ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:navigator.languages,tz:Intl.DateTimeFormat().resolvedOptions().timeZone,cores:navigator.hardwareConcurrency,width:screen.width,height:screen.height,webdriver:navigator.webdriver};</script>
 </head><body><h1>macOS 浏览器测试页</h1><a id="popup" target="_blank" href="/popup">打开新标签</a><script>document.querySelector('h1').dataset.ready='yes';</script></body></html>`);
   }));
   return {...fixture, requests, url:`http://127.0.0.1:${fixture.port}`};

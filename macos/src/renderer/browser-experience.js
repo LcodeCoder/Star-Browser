@@ -72,7 +72,7 @@ const StarBrowser = (() => {
   function zoom(direction) {const t=activeTab();if(!t)return;try{const current=t.web.getZoomFactor();const factor=direction===0?1:Math.max(.25,Math.min(3,Math.round((current+direction*.1)*100)/100));t.web.setZoomFactor(factor);$('zoomValue').textContent=`${Math.round(factor*100)}%`;}catch{}}
   function syncActive() {try{const t=activeTab();if(profile&&t){const bounds=t.web.getBoundingClientRect();window.api.syncActive(profile.id,t.web.getWebContentsId(),{width:bounds.width,height:bounds.height}).catch(()=>{});}}catch{}}
   function tabChanged() {syncActive();closeFind();persist();try{$('zoomValue').textContent=`${Math.round(activeTab().web.getZoomFactor()*100)}%`;}catch{}}
-  function togglePanel(id) {const el=$(id),opening=el.hidden;for(const other of ['historyPanel','tabSearchPanel','browserMenu','diagnosticPanel'])$(other).hidden=true;el.hidden=!opening;if(opening&&id==='historyPanel')loadHistory();if(opening&&id==='tabSearchPanel'){renderTabSearch();$('tabSearchInput').focus();}if(opening&&id==='diagnosticPanel'){loadDiagnostics();$('diagnosticSearch').focus();}}
+  function togglePanel(id) {const el=$(id),opening=el.hidden;for(const other of ['historyPanel','tabSearchPanel','browserMenu','diagnosticPanel'])$(other).hidden=true;el.hidden=!opening;if(opening&&id==='historyPanel')loadHistory();if(opening&&id==='browserMenu')el.querySelector('button:not(:disabled)')?.focus();if(opening&&id==='tabSearchPanel'){renderTabSearch();$('tabSearchInput').focus();}if(opening&&id==='diagnosticPanel'){loadDiagnostics();$('diagnosticSearch').focus();}}
   let diagnosticRows=null,diagnosticError='',diagnosticBusy=false;
   function closeDiagnostics(restoreFocus=true){$('diagnosticPanel').hidden=true;if(restoreFocus)$('browserMenuBtn').focus();}
   async function loadDiagnostics(){
@@ -111,7 +111,7 @@ const StarBrowser = (() => {
     if(!box.children.length)box.textContent='没有找到标签页';
   }
   function command(name) {
-    if(name==='find')openFind();else if(name==='address'){addr.focus();addr.select();}
+    if(name==='bookmark')$('starBtn').click();else if(name==='find')openFind();else if(name==='address'){addr.focus();addr.select();}
     else if(name==='diagnostics')togglePanel('diagnosticPanel');else if(name==='restore-tab')restoreClosed();else if(name==='history')togglePanel('historyPanel');
     else if(name==='zoom-in')zoom(1);else if(name==='zoom-out')zoom(-1);else if(name==='zoom-reset')zoom(0);
     else if(name==='reload'){try{activeTab()?.web.reload();}catch{}}
@@ -125,6 +125,18 @@ const StarBrowser = (() => {
     $('historySearch').oninput=renderHistory;$('historyClear').onclick=async()=>{try{if(await window.api.historyClear(profile.id))loadHistory();}catch(error){toast(error.message);}};
     $('tabSearchBtn').onclick=()=>togglePanel('tabSearchPanel');$('tabSearchClose').onclick=()=>$('tabSearchPanel').hidden=true;$('tabSearchInput').oninput=renderTabSearch;
     $('browserMenuBtn').onclick=()=>togglePanel('browserMenu');
+    $('browserMenuBtn').setAttribute('aria-haspopup','menu');$('browserMenuBtn').setAttribute('aria-controls','browserMenu');$('browserMenuBtn').setAttribute('aria-expanded','false');
+    new MutationObserver(()=>$('browserMenuBtn').setAttribute('aria-expanded',String(!$('browserMenu').hidden))).observe($('browserMenu'),{attributes:true,attributeFilter:['hidden']});
+    $('browserMenuBtn').addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();if($('browserMenu').hidden)togglePanel('browserMenu');else $('browserMenu').querySelector('button:not(:disabled)')?.focus();}});
+    for(const button of $('browserMenu').querySelectorAll('button'))button.setAttribute('role','menuitem');
+    $('browserMenu').addEventListener('keydown',event=>{
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();$('browserMenu').hidden=true;$('browserMenuBtn').focus();return;}
+      if(event.key==='Tab'){$('browserMenu').hidden=true;$('browserMenuBtn').focus();return;}
+      if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+      event.preventDefault();const controls=[...$('browserMenu').querySelectorAll('button:not(:disabled)')].filter(el=>el.getClientRects().length);const current=controls.indexOf(document.activeElement);
+      const next=event.key==='Home'?0:event.key==='End'?controls.length-1:(current+(event.key==='ArrowUp'?-1:1)+controls.length)%controls.length;controls[next]?.focus();
+    });
+    $('openBookmarks').onclick=()=>{$('browserMenu').hidden=true;$('bmBtn').click();};
     $('diagnosticClose').onclick=()=>closeDiagnostics();$('diagnosticSearch').oninput=()=>{diagnosticError='';renderDiagnostics();};
     $('diagnosticPanel').addEventListener('keydown',event=>{if(event.key!=='Tab')return;const controls=[...$('diagnosticPanel').querySelectorAll('input,button:not(:disabled)')].filter(el=>el.getClientRects().length);const index=controls.indexOf(document.activeElement);if(!controls.length)return;event.preventDefault();controls[(index+(event.shiftKey?-1:1)+controls.length)%controls.length].focus();});
     window.addEventListener('online',renderDiagnostics);window.addEventListener('offline',renderDiagnostics);
@@ -134,7 +146,7 @@ const StarBrowser = (() => {
     $('findInput').oninput=()=>find();$('findInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();find(!e.shiftKey,true);}else if(e.key==='Escape')closeFind();};
     $('findPrev').onclick=()=>find(false,true);$('findNext').onclick=()=>find(true,true);$('findClose').onclick=closeFind;
     $('fatalRetry').onclick=()=>{hideFatal();const t=activeTab();if(t?.web&&!t.web.__starReady){setupGuestInjection(t.web,t.id);}else try{t?.web.reload();}catch{}};$('fatalClose').onclick=hideFatal;
-    document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(e.key==='F12'||((e.code==='KeyI'||k==='i')&&((e.metaKey&&e.altKey)||(e.ctrlKey&&e.shiftKey)))){e.preventDefault();command('devtools');return;}if(mod&&['f','l','y','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){const diagnosticOpen=!$('diagnosticPanel').hidden;closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu','diagnosticPanel'])$(id).hidden=true;if(diagnosticOpen)$('browserMenuBtn').focus();}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
+    document.addEventListener('keydown',e=>{const mod=e.metaKey||e.ctrlKey,k=e.key.toLowerCase();if(e.key==='F12'||((e.code==='KeyI'||k==='i')&&((e.metaKey&&e.altKey)||(e.ctrlKey&&e.shiftKey)))){e.preventDefault();command('devtools');return;}if(mod&&['f','l','y','d','+','=','-','0'].includes(k)){e.preventDefault();command({f:'find',l:'address',y:'history',d:'bookmark','+':'zoom-in','=':'zoom-in','-':'zoom-out','0':'zoom-reset'}[k]);}if(e.key==='Escape'){const diagnosticOpen=!$('diagnosticPanel').hidden;closeFind();for(const id of ['historyPanel','tabSearchPanel','browserMenu','diagnosticPanel'])$(id).hidden=true;if(diagnosticOpen)$('browserMenuBtn').focus();}if((e.metaKey||e.ctrlKey)&&e.key==='Tab'){e.preventDefault();command(e.shiftKey?'previous-tab':'next-tab');}if((e.metaKey||e.ctrlKey)&&/^[1-9]$/.test(e.key)){e.preventDefault();const t=e.key==='9'?tabs.at(-1):tabs[Number(e.key)-1];if(t)activateTab(t.id);}});
     document.addEventListener('pointerdown',e=>{for(const [id,trigger] of [['browserMenu','browserMenuBtn'],['tabSearchPanel','tabSearchBtn'],['historyPanel','historyBtn'],['diagnosticPanel','browserMenuBtn']])if(!$(id).hidden&&!$(id).contains(e.target)&&!$(trigger).contains(e.target))$(id).hidden=true;});
     window.addEventListener('beforeunload',()=>{if(profile)window.api.saveSessionNow(profile.id,snapshot(),tabs.findIndex(t=>t.id===activeId));});
     const syncBanner=document.createElement('div');syncBanner.className='browser-sync-banner';syncBanner.hidden=true;syncBanner.setAttribute('role','status');document.getElementById('toolbar').insertAdjacentElement('afterend',syncBanner);

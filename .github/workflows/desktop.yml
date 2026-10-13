@@ -2,9 +2,9 @@ name: Desktop validation
 on:
   workflow_dispatch:
   push:
-    paths: ['macos/**', '.github/workflows/desktop.yml']
+    paths: ['macos/**', 'kernel/**', '.github/workflows/desktop.yml']
   pull_request:
-    paths: ['macos/**', '.github/workflows/desktop.yml']
+    paths: ['macos/**', 'kernel/**', '.github/workflows/desktop.yml']
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,9 +28,23 @@ jobs:
       - run: npm ci
       - run: npm run build:ui
       - run: npm test
+      - run: npm run verify:source
+      - run: npm run test:profile-editor
+      - run: npm run test:workspace-editors
+      - run: npm run test:launch-experience
+      - run: npm run test:browser-bookmarks
+      - run: npm run test:browser-settings
+      - run: npm run test:cookie-workspace
+      - run: npm run test:proxy-workspace
       - run: npm run test:workbench-browser
       - run: npm run test:experience
       - run: npm run test:diagnostics
+      - name: Build macOS arm64 installer
+        if: runner.os == 'macOS'
+        run: npm run build:mac
+      - name: Smoke test macOS package
+        if: runner.os == 'macOS'
+        run: npm run test:package
       - name: Build Windows installer
         if: runner.os == 'Windows'
         run: npm run build:win
@@ -39,7 +53,22 @@ jobs:
         with:
           name: desktop-${{ runner.os }}
           path: |
-            macos/test-results/star-0.12.0/
-            macos/test-results/star-0.13.0/
+            macos/test-results/
+            macos/dist/*.dmg
             macos/dist/*.exe
+            macos/dist/*mac*.zip
             macos/dist/*win*.zip
+            macos/dist/SHA256SUMS-*.txt
+  kernel-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test patch tooling
+        run: python3 -m unittest discover -s kernel/tests -p 'test_*.py' -v
+      - name: Check pinned Chromium patches and standalone C++ policy
+        run: python3 kernel/scripts/kernel.py verify-patches --output macos/test-results/native-kernel-patches.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kernel-policy
+          path: macos/test-results/native-kernel-patches.json

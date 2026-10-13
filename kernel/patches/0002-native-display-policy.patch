@@ -1,0 +1,42 @@
+diff --git a/content/browser/renderer_host/render_widget_host_view_base.cc b/content/browser/renderer_host/render_widget_host_view_base.cc
+--- a/content/browser/renderer_host/render_widget_host_view_base.cc
++++ b/content/browser/renderer_host/render_widget_host_view_base.cc
+@@ -4,4 +4,6 @@
+
+ #include "content/browser/renderer_host/render_widget_host_view_base.h"
++
++#include "content/browser/renderer_host/star_display_fingerprint.h"
+
+ #include <optional>
+@@ -670,8 +672,11 @@
+
+ display::ScreenInfo RenderWidgetHostViewBase::GetScreenInfo() const {
+-  return screen_infos_.current();
++  return GetScreenInfos().current();
+ }
+
+ display::ScreenInfos RenderWidgetHostViewBase::GetScreenInfos() const {
++  if (const auto& policy = star::GetDisplayPolicy()) {
++    return star::ApplyDisplayPolicy(screen_infos_, *policy);
++  }
+   return screen_infos_;
+ }
+diff --git a/content/browser/BUILD.gn b/content/browser/BUILD.gn
+--- a/content/browser/BUILD.gn
++++ b/content/browser/BUILD.gn
+@@ -1889,4 +1889,6 @@
+     "renderer_host/render_widget_host_view_base.cc",
+     "renderer_host/render_widget_host_view_base.h",
++    "renderer_host/star_display_policy.h",
++    "renderer_host/star_display_fingerprint.h",
+     "renderer_host/render_widget_host_view_child_frame.cc",
+     "renderer_host/render_widget_host_view_child_frame.h",
+diff --git a/content/test/BUILD.gn b/content/test/BUILD.gn
+--- a/content/test/BUILD.gn
++++ b/content/test/BUILD.gn
+@@ -2827,4 +2827,5 @@
+     "../browser/renderer_host/render_widget_host_view_aura_unittest.cc",
+     "../browser/renderer_host/render_widget_host_view_base_unittest.cc",
++    "../browser/renderer_host/star_display_policy_unittest.cc",
+     "../browser/renderer_host/render_widget_host_view_child_frame_unittest.cc",
+     "../browser/renderer_host/text_input_manager_unittest.cc",

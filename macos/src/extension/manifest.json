@@ -21,9 +21,7 @@
         "<all_urls>"
       ],
       "js": [
-        "config.js",
-        "fp-core.js",
-        "inject.js"
+        "config.js"
       ],
       "run_at": "document_start",
       "all_frames": true,
