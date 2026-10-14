@@ -52,6 +52,8 @@ function probeDisplay(expected, identity) {
   const layout = {width: rect.width, height: rect.height};
   box.remove();
   return {screen: actualScreen, dpr: devicePixelRatio, queries, descriptors, layout,
+    documentState: {visibility: document.visibilityState, readyState: document.readyState, viewport: {width: innerWidth, height: innerHeight},
+      root: {width: document.documentElement.getBoundingClientRect().width, height: document.documentElement.getBoundingClientRect().height}},
     dprGetter: {name: getter.name, length: getter.length, native: /\[native code\]/.test(Function.prototype.toString.call(getter)), illegalReceiver},
     identity: !identity || (getter === identity.dpr && fields.every(key => Object.getOwnPropertyDescriptor(Screen.prototype, key).get === identity[key])),
     language: navigator.language, timezone: new Intl.DateTimeFormat().resolvedOptions().timeZone};

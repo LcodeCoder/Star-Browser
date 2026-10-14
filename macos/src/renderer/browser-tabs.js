@@ -38,6 +38,10 @@ const StarTabs = (() => {
     tab.sleeping = false;
     tab.web = makeWebview(tab.id);
     tab.web.__starPendingURL = tab.url;
+    // The guest takes its first viewport from the host when it is attached.
+    // A foreground tab must already have visible layout at that point.
+    tab.web.classList.toggle("active", tab.id === activeId);
+    tab.web.style.display = tab.id === activeId ? "flex" : "none";
     wrap.appendChild(tab.web);
   }
   async function sleep(id) {

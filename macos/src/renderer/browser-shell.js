@@ -1446,7 +1446,11 @@ function createTab(url, opts) {
   const id = nextId++;
   const sleeping=!!opts.sleeping&&!opts.ntp&&!!opts.background;
   const w=sleeping?null:makeWebview(id);
-  if(w)wrap.appendChild(w);
+  if(w){
+    w.classList.toggle("active", !opts.background);
+    w.style.display=opts.background?"none":"flex";
+    wrap.appendChild(w);
+  }
   const tab={id,title:opts.title||"新标签",web:w,url:url||"about:home",ntp:!!opts.ntp,pinned:!!opts.pinned,muted:!!opts.muted,sleeping};
   const boundary=tabs.findIndex(t=>!t.pinned);
   if(tab.pinned&&boundary>=0)tabs.splice(boundary,0,tab);else tabs.push(tab);

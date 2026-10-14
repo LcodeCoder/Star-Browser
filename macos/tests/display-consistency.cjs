@@ -111,7 +111,12 @@ async function measure(page = pg, dpr = reference.dpr, options) {
   const confirmed = [before,after].find(snapshot => JSON.stringify(snapshot) === JSON.stringify(observed));
   assert.ok(confirmed, 'Current display must match an independent native process before or after the measurement');
   reference.screen = confirmed;
-  return verify(values, dpr, options);
+  try { return verify(values, dpr, options); } catch (failure) {
+    const directory=path.join(root,'test-results');fs.mkdirSync(directory,{recursive:true});
+    fs.writeFileSync(path.join(directory,'display-consistency-failure.json'),JSON.stringify({
+      measuredAt:new Date().toISOString(),error:failure.stack,target:page.info,dpr,options,reference:{screen:reference.screen,dpr:reference.dpr},values
+    },null,2)+'\n');throw failure;
+  }
 }
 async function check(name, run) {
   const start = Date.now();
@@ -217,12 +222,20 @@ async function check(name, run) {
       await evaluate(app, session, `StarTabs.sleep(${JSON.stringify(firstTab)})`);
       assert.equal(await evaluate(app, session, `tabs.find(t=>t.id===${JSON.stringify(firstTab)}).sleeping`), true);
       await evaluate(app, session, `activateTab(${JSON.stringify(firstTab)})`); pg = await page('primary'); const wake = await measure();
+      const subsequentWakes=[];
+      for(let round=0;round<3;round++){
+        await evaluate(app,session,`activateTab(${JSON.stringify(secondTab)})`);
+        await evaluate(app,session,`StarTabs.sleep(${JSON.stringify(firstTab)})`);
+        assert.equal(await evaluate(app,session,`tabs.find(t=>t.id===${JSON.stringify(firstTab)}).sleeping`),true);
+        await evaluate(app,session,`activateTab(${JSON.stringify(firstTab)})`);pg=await page('primary');
+        subsequentWakes.push(await measure());
+      }
       await evaluate(app, session, `closeTab(${JSON.stringify(secondTab)})`);
       await api('action', 'stop', [parallel.id]); await api('action', 'stop', [profile.id]);
       await api('browse', profile.id); pg = await page('primary'); const reopen = await measure();
       await close(app); app = null; await start();
       await api('browse', profile.id); pg = await page('primary');
-      return {wake, reopen, restart: await measure()};
+      return {wake, subsequentWakes, reopen, restart: await measure()};
     });
     await check('工作台诊断实际读取跨进程框架的显示与 CSS', async () => {
       const audit = await api('fingerprintAudit', profile.id);
