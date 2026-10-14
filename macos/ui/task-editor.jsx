@@ -2,7 +2,7 @@ import React, {useRef, useState} from "react";
 import {Plus, ArrowUp, ArrowDown, Trash2} from "lucide-react";
 import {Button, IconButton, Modal, Field} from "./components";
 import {useWorkspace, messageOf} from "./context";
-import {useEditorGuard, EditorFooter, submitShortcut} from "./editor-state";
+import {useEditorGuard, useEditorErrorFocus, EditorFooter, submitShortcut} from "./editor-state";
 import {TASK_NAMES, freshStep} from "./task-options";
 import {validateTask, KEYS} from "../src/main/task-validation";
 
@@ -19,6 +19,7 @@ export function TaskEditor({task, close}) {
   };
   const fieldError = field => error?.field === field ? error.message : undefined;
   const fieldId = field => 'task-' + field.replaceAll('.', '-');
+  useEditorErrorFocus(error, busy, fieldId(error?.field || 'name'));
   const save = async event => {
     event.preventDefault();
     if (busy) return;
@@ -30,10 +31,6 @@ export function TaskEditor({task, close}) {
       await refresh(); notify('任务已保存'); close();
     } catch (failure) {
       setError({message: messageOf(failure), field: failure.field});
-      requestAnimationFrame(() => {
-        const control = formRef.current?.querySelector('#' + fieldId(failure.field || 'name'));
-        control?.scrollIntoView({block: 'nearest'}); control?.focus({preventScroll: true});
-      });
     } finally { setBusy(false); }
   };
   const stepField = (index, key, label, control, hint) => <Field label={label} hint={hint} id={fieldId('steps.' + index + '.' + key)} error={fieldError('steps.' + index + '.' + key)}>{control}</Field>;

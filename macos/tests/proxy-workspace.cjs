@@ -22,7 +22,7 @@ async function assignment(){await proxyRow(proxy.name).getByRole('button',{name:
    await manager.getByRole('button',{name:'批量导入',exact:true}).click();const input=manager.getByRole('textbox',{name:'批量导入代理',exact:true}),text='\nhttp://localhost:8080\n\nftp://private:secret@localhost:21';const before=await model();
    await input.fill(text);await manager.getByRole('button',{name:'导入',exact:true}).click();await manager.locator('#text-import-error').waitFor();assert.match(await manager.locator('#text-import-error').innerText(),/第 4 行/);assert.deepEqual(await model(),before);
    const range=await input.evaluate(el=>({selected:el.value.slice(el.selectionStart,el.selectionEnd),focused:document.activeElement===el}));assert.equal(range.selected,'ftp://private:secret@localhost:21');assert.ok(range.focused);
-   await manager.keyboard.press('Escape');await manager.getByRole('button',{name:'继续编辑',exact:true}).click();await until(()=>input.evaluate(el=>document.activeElement===el));assert.equal(await input.inputValue(),text);
+   await manager.keyboard.press('Escape');await manager.getByRole('button',{name:'继续编辑',exact:true}).click();await until(()=>input.evaluate(el=>document.activeElement===el));assert.equal(await input.inputValue(),text);assert.equal(await input.evaluate(el=>el.value.slice(el.selectionStart,el.selectionEnd)),'ftp://private:secret@localhost:21');
   });
   await check('批量代理真实磁盘写入失败回滚全部数据，重试与底部快捷键只导入一次',async()=>{
    const input=manager.getByRole('textbox',{name:'批量导入代理',exact:true}),text='https://qa%40star:p%3Aa%20ss@[::1]:8443\nhttp://127.0.0.1:8080';await input.fill(text);const before=await model();await fault(true);

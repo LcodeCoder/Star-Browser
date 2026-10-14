@@ -9,7 +9,7 @@
   "tfbMode": "changyi",
   "scripts": {
     "start": "npm run build:ui && electron .",
-    "test": "node --test tests/unit.test.cjs tests/proxy-readiness.test.cjs tests/fingerprint-native-mode.test.cjs tests/proxy-import.test.cjs tests/storage-atomicity.test.cjs tests/task-quit-guard.test.cjs tests/editor-close-guard.test.cjs tests/backup-consistency.test.cjs tests/display-settings.test.cjs",
+    "test": "node --test tests/unit.test.cjs tests/proxy-readiness.test.cjs tests/fingerprint-native-mode.test.cjs tests/proxy-import.test.cjs tests/storage-atomicity.test.cjs tests/task-quit-guard.test.cjs tests/editor-close-guard.test.cjs tests/backup-consistency.test.cjs tests/display-settings.test.cjs tests/cdp-socket.test.cjs",
     "test:e2e": "node tests/e2e.cjs",
     "test:package": "node tests/package-smoke.cjs",
     "verify:source": "node scripts/verify-source.cjs",

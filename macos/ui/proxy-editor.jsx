@@ -1,7 +1,7 @@
 import React, {useState, useRef} from "react";
 import {Modal, Field} from "./components";
 import {useWorkspace, messageOf} from "./context";
-import {useEditorGuard, EditorFooter, submitShortcut} from "./editor-state";
+import {useEditorGuard, useEditorErrorFocus, EditorFooter, submitShortcut} from "./editor-state";
 import {validateProxy, ProfileValidationError} from "../src/main/profile-validation";
 import {parseProxyInput} from "../src/main/proxy-parse";
 
@@ -11,6 +11,8 @@ export function ProxyEditor({initial = {}, onClose}) {
   const [error, setError] = useState(null), [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const formRef = useRef(null), guard = useEditorGuard(form, busy, onClose);
   const update = (key, value) => { setForm(f => ({...f, [key]: value})); setError(null); guard.setDiscard(false); };
+  const errorKey = error?.field === 'name' ? 'name' : error?.field?.replace(/^proxy\./, '');
+  useEditorErrorFocus(error, busy, 'proxy-' + (errorKey || 'name'));
   const fieldError = key => error?.field === key ? error.message : undefined;
   const paste = event => {
     const parsed = parseProxyInput(event.clipboardData.getData('text'), form.type);
@@ -32,8 +34,6 @@ export function ProxyEditor({initial = {}, onClose}) {
       await refresh(); notify("代理已保存"); onClose();
     } catch (failure) {
       setError({message: messageOf(failure), field: failure.field});
-      const key = failure.field === 'name' ? 'name' : failure.field?.replace(/^proxy\./, '');
-      requestAnimationFrame(() => formRef.current?.querySelector('#proxy-' + (key || 'name'))?.focus());
     } finally { setBusy(false); }
   };
   return <Modal open dismissible={!busy} onOpenChange={open => !open && guard.requestClose()}

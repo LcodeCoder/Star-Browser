@@ -1,7 +1,7 @@
 import React,{useRef,useState} from 'react';
 import {Modal,Field} from './components';
 import {useWorkspace,messageOf} from './context';
-import {useEditorGuard,EditorFooter,submitShortcut} from './editor-state';
+import {useEditorGuard,useEditorErrorFocus,EditorFooter,submitShortcut} from './editor-state';
 import validation from '../src/main/bookmark-validation';
 const {validateBookmark}=validation;
 export function BookmarkEditor({item,onClose}){
@@ -9,10 +9,11 @@ export function BookmarkEditor({item,onClose}){
  const [form,setForm]=useState({title:item.title||'',url:item.url||''});
  const [busy,setBusy]=useState(false),[error,setError]=useState(null);const formRef=useRef(null);
  const guard=useEditorGuard(form,busy,onClose);
+ useEditorErrorFocus(error,busy,error?.field?'bookmark-'+error.field:'bookmark-editor-error');
  function update(key,value){setForm(current=>({...current,[key]:value}));if(error?.field===key)setError(null);guard.setDiscard(false);}
  async function save(event){
   event.preventDefault();if(busy)return;guard.setDiscard(false);setError(null);
-  let value;try{value=validateBookmark(form);}catch(error){setError({message:error.message,field:error.field});requestAnimationFrame(()=>formRef.current?.querySelector('#bookmark-'+error.field)?.focus());return;}
+  let value;try{value=validateBookmark(form);}catch(error){setError({message:error.message,field:error.field});return;}
   setBusy(true);
   try{if(item.id)await window.api.bookmarksUpdate(item.id,value);else await window.api.bookmarksAdd(value);await refresh();notify('书签已保存');onClose();}
   catch(error){setError({message:messageOf(error)});}finally{setBusy(false);}

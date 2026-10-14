@@ -9,6 +9,12 @@ const root = path.resolve(__dirname, '..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'star-display-consistency-'));
 const results = [], scopes = ['page', 'sameOrigin', 'crossOrigin', 'srcdoc', 'nested', 'aboutBlank'];
 let origin, app, manager, control, profile, parallel, pg, reference, error;
+const protocolFile = path.join(root, 'test-results/display-protocol.jsonl');
+fs.mkdirSync(path.dirname(protocolFile), {recursive:true}); fs.writeFileSync(protocolFile, '');
+fs.writeFileSync(path.join(root, 'test-results/fingerprint-protocol.jsonl'), '');
+function trace(event, detail = {}) {
+  fs.appendFileSync(protocolFile, JSON.stringify({at:new Date().toISOString(), event, ...detail}) + '\n');
+}
 async function until(read, timeout = 15000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) { const value = await read(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 40)); }
@@ -17,14 +23,20 @@ async function until(read, timeout = 15000) {
 async function evaluate(connection, sessionId, expression) {
   let value;
   try { value = await connection.pipe.send('Runtime.evaluate', {expression, returnByValue: true, awaitPromise: true, timeout: 15000}, sessionId, 18000); }
-  catch (failure) { throw new Error(failure.message + ' [' + expression.slice(0, 120) + ']\n' + connection.stderr.slice(-1800)); }
+  catch (failure) {
+    trace('evaluate-failed', {sessionId, expression:expression.slice(0,120), error:failure.message});
+    if(failure.code==='CDP_SESSION_DETACHED')throw failure;
+    const targets = await connection.pipe.send('Target.getTargets').catch(() => null);
+    trace('target-state-on-failure', {targets:targets?.targetInfos.map(({targetId,type,attached,parentId})=>({targetId,type,attached,parentId}))});
+    throw new Error(failure.message + ' [' + expression.slice(0, 120) + ']\n' + connection.stderr.slice(-1800));
+  }
   if (value.exceptionDetails) throw new Error(value.exceptionDetails.exception?.description || value.exceptionDetails.text);
   return value.result?.value;
 }
 async function api(method, ...args) { return evaluate(app, manager, 'window.api[' + JSON.stringify(method) + '](...' + JSON.stringify(args) + ')'); }
 async function launch(args, directory, managed) {
   fs.rmSync(path.join(directory, 'DevToolsActivePort'), {force:true});
-  const env = {...process.env, ...(managed ? {TFB_TEST_MODE: '1', TFB_USER_DATA_DIR: directory, TFB_TEST_ORIGIN_PORT: String(origin.port)} : {})};
+  const env = {...process.env, ...(managed ? {TFB_TEST_MODE: '1', TFB_USER_DATA_DIR: directory, TFB_TEST_ORIGIN_PORT: String(origin.port), TFB_TEST_FP_TRACE: path.join(root, 'test-results/fingerprint-protocol.jsonl')} : {})};
   // The Windows launcher treats an empty RUN_AS_NODE entry as Node mode. Remove it.
   delete env.ELECTRON_RUN_AS_NODE;
   const state = {stderr: '', child: spawn(require('electron'), args, {cwd: root, env,
@@ -35,7 +47,15 @@ async function launch(args, directory, managed) {
       if (state.child.exitCode !== null) throw new Error('Electron exited: ' + state.stderr);
       try { const lines = fs.readFileSync(path.join(directory, 'DevToolsActivePort'), 'utf8').split('\n'); return 'ws://127.0.0.1:' + lines[0] + lines[1]; } catch { return null; }
     });
-    state.pipe = new CdpSocket(endpoint); await state.pipe.ready; return state;
+    state.pipe = new CdpSocket(endpoint);
+    state.pipe.on('message', message => {
+      if (!/^(Target\.|Runtime\.executionContext|Debugger\.)/.test(message.method || '')) return;
+      const params = message.params || {};
+      trace(message.method, {managed, sessionId:message.sessionId, childSessionId:params.sessionId,
+        type:params.targetInfo?.type, targetId:params.targetInfo?.targetId || params.targetId,
+        waitingForDebugger:params.waitingForDebugger, reason:params.reason});
+    });
+    await state.pipe.ready; return state;
   } catch (failure) { await close(state); throw failure; }
 }
 async function close(connection) {
@@ -60,7 +80,7 @@ async function page(marker) {
       if (state?.error) throw new Error(state.error);
       return state?.ready && attached;
     } catch (failure) {
-      if (!/Session with given id not found|No target with given id|Cannot find context|Execution context was destroyed/.test(failure.message)) throw failure;
+      if (failure.code!=='CDP_SESSION_DETACHED'&&!/Session with given id not found|No target with given id|Cannot find context|Execution context was destroyed/.test(failure.message)) throw failure;
       attached = null; return null;
     }
   }, 25000);

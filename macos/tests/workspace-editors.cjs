@@ -125,7 +125,7 @@ async function restore(channel,release=false) {
     // Open with the row menu to exercise the same route used by a person.
     const row=manager.locator('.object-item').filter({hasText:'书签编辑体验'});await row.getByRole('button',{name:'更多操作',exact:true}).click();await manager.getByRole('menuitem',{name:'编辑书签',exact:true}).click();
     await manager.locator('#bookmark-title').fill('失败后继续编辑');await intercept('bookmarks:update','failure');await manager.getByRole('button',{name:'保存书签',exact:true}).click();await manager.locator('#bookmark-editor-error').waitFor();assert.match(await manager.locator('#bookmark-editor-error').innerText(),/模拟磁盘写入失败/);
-    assert.equal((await api('bookmarksList')).find(b=>b.id===item.id).title,'书签编辑体验');assert.equal(await manager.locator('#bookmark-title').inputValue(),'失败后继续编辑');await restore('bookmarks:update');
+    assert.equal((await api('bookmarksList')).find(b=>b.id===item.id).title,'书签编辑体验');assert.equal(await manager.locator('#bookmark-title').inputValue(),'失败后继续编辑');await focus('bookmark-editor-error');await restore('bookmarks:update');
     await intercept('bookmarks:update','hold');await manager.keyboard.press(shortcut);await manager.getByRole('button',{name:'保存中…',exact:true}).waitFor();assert.ok(await manager.locator('#bookmark-title').isDisabled());await manager.keyboard.press('Escape');assert.ok(await manager.locator('.bookmark-editor-modal').isVisible());await restore('bookmarks:update',true);await manager.locator('.bookmark-editor-modal').waitFor({state:'hidden'});
     assert.equal((await api('bookmarksList')).find(b=>b.id===item.id).title,'失败后继续编辑');
   });

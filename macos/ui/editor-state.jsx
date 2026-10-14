@@ -1,4 +1,4 @@
-import React, {useEffect, useLayoutEffect, useRef, useState} from "react";
+import React, {useLayoutEffect, useRef, useState} from "react";
 import {Button} from "./components";
 
 export function useWindowCloseGuard(dirty, busy) {
@@ -16,18 +16,42 @@ export function useEditorGuard(value, busy, onClose) {
   const footerRef = useRef(null), previousFocus = useRef(null);
   const dirty = JSON.stringify(value) !== initial.current;
   useWindowCloseGuard(dirty, busy);
-  useEffect(() => { if (discard) footerRef.current?.querySelector('[data-continue-editing]')?.focus(); }, [discard]);
+  useLayoutEffect(() => {
+    if (discard) {
+      footerRef.current?.querySelector('[data-continue-editing]')?.focus();
+    } else if (previousFocus.current) {
+      const {element, start, end, direction} = previousFocus.current;
+      previousFocus.current = null;
+      if (element?.isConnected) {
+        element.focus();
+        if (Number.isInteger(start)) element.setSelectionRange?.(start, end, direction);
+      }
+    }
+  }, [discard]);
   const requestClose = () => {
     if (busy) return;
     if (!dirty) { onClose(); return; }
-    if (!discard) previousFocus.current = document.activeElement;
+    if (!discard) {
+      const element = document.activeElement;
+      previousFocus.current = {element, start:element?.selectionStart, end:element?.selectionEnd, direction:element?.selectionDirection};
+    }
     setDiscard(true);
   };
-  const resume = () => {
-    setDiscard(false);
-    requestAnimationFrame(() => { if (previousFocus.current?.isConnected) previousFocus.current.focus(); });
-  };
+  const resume = () => setDiscard(false);
   return {dirty, discard, setDiscard, requestClose, resume, footerRef, onClose};
+}
+
+// Focus after React has committed the error and re-enabled controls. A delayed
+// frame can otherwise lose the error selection or steal focus from a later click.
+export function useEditorErrorFocus(error, busy, target) {
+  useLayoutEffect(() => {
+    if (!error || busy) return;
+    const element = typeof target === 'string' ? document.getElementById(target) : target.current;
+    if (!element?.isConnected) return;
+    element.focus({preventScroll:true});
+    if (Number.isInteger(error.start)) element.setSelectionRange?.(error.start, error.end);
+    element.scrollIntoView({block:'nearest'});
+  }, [error, busy, target]);
 }
 
 export function EditorFooter({guard, busy, error, note, saveLabel, formId, errorId}) {

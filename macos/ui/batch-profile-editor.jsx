@@ -1,7 +1,7 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useRef,useState} from 'react';
 import {Modal,Field} from './components';
 import {useWorkspace,messageOf} from './context';
-import {useEditorGuard,EditorFooter,submitShortcut} from './editor-state';
+import {useEditorGuard,useEditorErrorFocus,EditorFooter,submitShortcut} from './editor-state';
 import {validateProfile} from '../src/main/profile-validation';
 
 export function BatchProfileEditor({ids,onClose}){
@@ -9,7 +9,7 @@ export function BatchProfileEditor({ids,onClose}){
  const [value,setValue]=useState({group:'',tagsMode:'keep',tags:'',proxyId:'keep'}),[busy,setBusy]=useState(false),[error,setError]=useState(null);
  const form=useRef(null),guard=useEditorGuard(value,busy,onClose);
  const fieldIds={group:'batch-group',tags:'batch-tags',tagsMode:'batch-tags-mode',proxy:'batch-proxy'};
- useEffect(()=>{if(error){const focus=()=>{const element=document.getElementById(fieldIds[error.field]||'batch-editor-error');element?.focus();element?.scrollIntoView({block:'nearest'});};requestAnimationFrame(focus);setTimeout(focus,0);}},[error]);
+ useEditorErrorFocus(error,busy,fieldIds[error?.field]||'batch-editor-error');
  const set=(key,next)=>{setError(null);guard.setDiscard(false);setValue(current=>({...current,[key]:next}));};
  const submit=async event=>{
   event.preventDefault();if(busy||guard.discard)return;setError(null);
