@@ -5,51 +5,53 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Star Browser · 起始页</title>
 <style>
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
-         background: linear-gradient(135deg,#0f172a 0%, #134e4a 100%); color:#e2e8f0;
-         min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; }
-  .card { width:640px; max-width:92vw; background:rgba(15,23,42,.66); border:1px solid rgba(45,212,191,.35);
-          border-radius:16px; padding:28px 30px; box-shadow:0 12px 40px rgba(0,0,0,.35); }
-  h1 { font-size:22px; margin:0 0 6px; color:#5eead4; }
-  .sub { color:#94a3b8; font-size:13px; margin:0 0 20px; line-height:1.6; }
-  .row { display:flex; gap:10px; margin-bottom:18px; }
-  .row input { flex:1; padding:11px 13px; border-radius:10px; border:1px solid #334155; background:#0b1220; color:#e2e8f0; font-size:14px; outline:none; }
-  .row input:focus { border-color:#2dd4bf; }
-  .row button { padding:11px 18px; border:0; border-radius:10px; background:#2dd4bf; color:#042f2e; font-weight:600; cursor:pointer; font-size:14px; }
-  .row button:hover { background:#5eead4; }
-  .sites { display:flex; flex-wrap:wrap; gap:10px; }
-  .sites a { text-decoration:none; color:#cbd5e1; background:rgba(51,65,85,.6); border:1px solid #334155;
-             padding:8px 14px; border-radius:999px; font-size:13px; transition:.15s; }
-  .sites a:hover { background:#2dd4bf; color:#042f2e; border-color:#2dd4bf; }
-  .tip { margin-top:20px; font-size:12px; color:#64748b; line-height:1.7; border-top:1px dashed #334155; padding-top:14px; }
-  .tip b { color:#f87171; }
-  .ok { color:#34d399; }
+/* STAR_PALETTE */
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:clamp(48px,12vh,100px) 24px 32px;background:var(--ui-surface);color:var(--ui-text);font:13px 'SF Pro Text',-apple-system,'PingFang SC','Segoe UI','Microsoft YaHei',sans-serif}
+main{width:640px;max-width:100%;margin:auto}
+.brand{display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:12px}
+.brand svg{width:34px;height:34px}
+h1{font-size:24px;font-weight:600;letter-spacing:-.65px;margin:0}
+.description{margin:0 0 28px;text-align:center;color:var(--ui-muted);font-size:12px;line-height:1.7}
+form{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 14px;margin-bottom:32px;background:var(--ui-page);border:1px solid var(--ui-line);border-radius:8px}
+form:focus-within{border-color:var(--ui-accent);box-shadow:0 0 0 2px var(--ui-accent-soft)}
+input{flex:1;min-width:0;height:34px;border:0;background:transparent;color:var(--ui-text);font:inherit;outline:0}
+input::placeholder{color:var(--ui-muted)}
+button{height:32px;padding:0 14px;border:0;border-radius:5px;background:var(--ui-accent-fill);color:var(--ui-on-accent);font:inherit;cursor:pointer}
+button:hover{background:var(--ui-accent-hover)}
+button:focus-visible,a:focus-visible{outline:2px solid var(--ui-accent);outline-offset:3px}
+h2{margin:0 0 8px;font-size:12px;font-weight:500;color:var(--ui-muted)}
+.sites{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.sites a{display:block;min-width:0;padding:12px 8px;color:var(--ui-text);border-radius:6px;text-decoration:none;overflow:hidden;text-overflow:ellipsis}
+.sites a:hover{background:var(--ui-hover)}
+.error{color:var(--ui-danger);line-height:1.6;margin-top:-18px;margin-bottom:24px}
+.error[hidden]{display:none}
+@media(max-width:600px){.sites{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Star Browser · 内置 Chromium 内核</h1>
-    <p class="sub">专为外贸人提供的免费指纹浏览器 · 直接在上方输入网址并回车即可访问。<span class="ok">本页为离线起始页，浏览器内核工作正常。</span></p>
-    <div class="row">
-      <input id="u" type="text" placeholder="输入网址，如 baidu.com，回车访问" />
-      <button id="g">前往</button>
-    </div>
-    <div class="sites">
-      <a href="https://www.baidu.com">百度</a>
-      <a href="https://www.bing.com">Bing</a>
-      <a href="https://example.com">Example</a>
-      <a href="https://www.wikipedia.org">Wikipedia</a>
-    </div>
-    <div class="tip">
-      提示：<b>google.com 等部分境外站点在当前网络环境下可能无法访问（加载超时）</b>，并非浏览器故障。检测伪装度建议用 YaLaLa 或 Whoer.com。
-      若打开某网站长时间白屏，底部会出现红色提示条说明原因。可换用可正常访问的站点（如百度、Bing）。
-    </div>
-  </div>
-  <script>
-    function nav(v){ var u=(v||'').trim(); if(!u) return; if(!/^https?:\/\//i.test(u)&&!/^about:/.test(u)) u='https://'+u; location.href=u; }
-    document.getElementById('g').addEventListener('click', function(){ nav(document.getElementById('u').value); });
-    document.getElementById('u').addEventListener('keydown', function(e){ if(e.key==='Enter') nav(this.value); });
-  </script>
+<main>
+  <div class="brand"><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="18" fill="#e8f0fe"/><path d="M32 11C34 25 39 30 53 32C39 34 34 39 32 53C30 39 25 34 11 32C25 30 30 25 32 11Z" fill="#1a73e8"/><circle cx="50" cy="14" r="4" fill="#fbbc04"/></svg><h1>Star Browser</h1></div>
+  <p class="description">搜索或访问网站，开始你的工作。</p>
+  <form id="search"><input id="u" aria-label="搜索或输入网址" placeholder="搜索或输入网址" autocomplete="off" spellcheck="false" aria-describedby="error" /><button type="submit">前往</button></form>
+  <p id="error" class="error" role="alert" hidden></p>
+  <section aria-labelledby="sitesTitle"><h2 id="sitesTitle">常用网址</h2><div class="sites"><a href="https://www.google.com">Google</a><a href="https://github.com">GitHub</a><a href="https://www.wikipedia.org">Wikipedia</a><a href="https://browserleaks.com">BrowserLeaks</a></div></section>
+</main>
+<script>
+  const media=matchMedia('(prefers-color-scheme: dark)');
+  function theme(){document.documentElement.dataset.theme=media.matches?'dark':'light';}
+  theme();media.addEventListener('change',theme);
+  const field=document.getElementById('u'),error=document.getElementById('error');
+  field.addEventListener('input',()=>{error.hidden=true;field.removeAttribute('aria-invalid');});
+  document.getElementById('search').addEventListener('submit',event=>{
+    event.preventDefault();const value=field.value.trim();if(!value)return;
+    let url;
+    if(/^https?:\/\//i.test(value))url=value;
+    else if(/^(localhost|\[[a-f\d:]+\]|[a-z\d-]+(?:\.[a-z\d-]+)+)(?::\d+)?(?:[/?#]|$)/i.test(value)&&! /\s/.test(value))url=(/^(localhost|127\.)/.test(value)?'http://':'https://')+value;
+    else if(/^[a-z][a-z\d+.-]*:/i.test(value)){error.textContent='请输入 HTTP 或 HTTPS 网址';error.hidden=false;field.setAttribute('aria-invalid','true');field.focus();return;}
+    else url='https://www.google.com/search?q='+encodeURIComponent(value);
+    location.href=url;
+  });
+</script>
 </body>
 </html>

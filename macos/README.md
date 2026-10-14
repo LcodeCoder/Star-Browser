@@ -1,12 +1,13 @@
-# Star Browser for macOS
+# Star Browser Desktop
 
-主工作台使用 React、Radix UI、cmdk 和 Lucide，界面资源在构建时打包，运行时不依赖在线组件服务。浏览器使用 Electron 内置 Chromium；也可启动独立的本机 Chrome。
+主工作台使用 React、Radix UI、cmdk 和 Lucide，界面资源在构建时打包，运行时不依赖在线组件服务。浏览器使用 Electron 内置 Chromium；也可启动独立的本机 Chrome。Windows 与 macOS 共用本目录源码。当前 0.15.0 的浏览器和工作台已采用统一的白色、浅灰与中性深灰界面，具体改动与验证见 [版本说明](docs/release-0.15.0.md)。
 
 ```sh
 npm ci
 npm start
 npm test
 npm run test:e2e
+npm run test:browser-newtab
 npm run build:mac
 npm run test:package
 ```

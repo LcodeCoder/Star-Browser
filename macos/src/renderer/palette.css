@@ -1,0 +1,49 @@
+/* Shared surfaces for the workbench and browser. */
+:root {
+  color-scheme: light;
+  --ui-page: #f7f8fa;
+  --ui-surface: #ffffff;
+  --ui-sidebar: #f8f9fb;
+  --ui-text: #20252d;
+  --ui-muted: #626b79;
+  --ui-line: #e5e8ed;
+  --ui-hover: #f1f3f6;
+  --ui-input: #ffffff;
+  --ui-accent: #2563eb;
+  --ui-accent-fill: #2563eb;
+  --ui-accent-hover: #1d4ed8;
+  --ui-accent-soft: #edf3ff;
+  --ui-on-accent: #ffffff;
+  --ui-success: #277354;
+  --ui-success-soft: #edf6f0;
+  --ui-danger: #b33d43;
+  --ui-danger-soft: #fbedee;
+  --ui-warn: #87612a;
+  --ui-warn-soft: #faf3e6;
+  --ui-shadow: 0 8px 28px #20252d18, 0 2px 6px #20252d0a;
+  --ui-scroll-thumb: #c3c8d1;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ui-page: #16181c;
+  --ui-surface: #1e2126;
+  --ui-sidebar: #191b20;
+  --ui-text: #e8eaee;
+  --ui-muted: #a4a9b4;
+  --ui-line: #33373e;
+  --ui-hover: #282c32;
+  --ui-input: #22262c;
+  --ui-accent: #93b8ff;
+  --ui-accent-fill: #356bdd;
+  --ui-accent-hover: #4378e9;
+  --ui-accent-soft: #263550;
+  --ui-on-accent: #ffffff;
+  --ui-success: #a2d4b6;
+  --ui-success-soft: #25352d;
+  --ui-danger: #f0a5aa;
+  --ui-danger-soft: #3d2b30;
+  --ui-warn: #e3c18c;
+  --ui-warn-soft: #373126;
+  --ui-shadow: 0 10px 32px #00000040, 0 2px 6px #00000020;
+  --ui-scroll-thumb: #59616c;
+}

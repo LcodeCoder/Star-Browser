@@ -34,6 +34,8 @@ jobs:
       - run: npm run test:launch-experience
       - run: npm run test:browser-bookmarks
       - run: npm run test:browser-settings
+      - run: npm run test:browser-newtab
+      - run: npm run test:tabs
       - run: npm run test:cookie-workspace
       - run: npm run test:proxy-workspace
       - run: npm run test:batch-profiles

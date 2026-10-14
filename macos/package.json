@@ -1,6 +1,6 @@
 {
   "name": "star-browser",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
@@ -51,7 +51,8 @@
     "test:cookie-workspace": "node tests/cookie-workspace.cjs",
     "test:proxy-workspace": "node tests/proxy-workspace.cjs",
     "test:batch-profiles": "node tests/batch-profiles.cjs",
-    "test:editor-close": "node tests/editor-close.cjs"
+    "test:editor-close": "node tests/editor-close.cjs",
+    "test:browser-newtab": "node tests/browser-newtab.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",

@@ -22,12 +22,16 @@ const StarBrowser = (() => {
     document.documentElement.dataset.platform=window.api.platform;
     if(window.api.platform!=="darwin")document.querySelectorAll('[title],kbd').forEach(el=>{if(el.title)el.title=el.title.replaceAll('⌘','Ctrl+');if(el.tagName==='KBD')el.textContent=el.textContent.replaceAll('⌘','Ctrl+').replaceAll('⇧','Shift+');});
     for (const [id,name] of Object.entries(buttonIcons)) { const el=document.getElementById(id); if(el){el.innerHTML=icon(name);el.setAttribute('aria-label',el.title||el.textContent||id);} }
+    $('addressIcon').innerHTML = icon('Globe2');
+    $('ntpSearchIcon').innerHTML = icon('Search');
+    document.querySelector('.profile-avatar').textContent = [...(payload.name || 'S')][0];
     $('badge').textContent = payload.name || '浏览环境';
     $('badge').title = `环境 ${payload.id}`;
     $('connectionIdentity').textContent = payload.proxy?.host ? `${payload.proxy.host}:${payload.proxy.port}` : '本机网络';
     $('connectionIdentity').title = payload.proxy?.host ? '此环境使用已配置代理' : '此环境使用本机网络';
     $('ntpEnvironment').textContent = payload.name || '你的独立浏览空间';
-    $('ntpRegion').textContent = `${payload.fingerprint?.language || ''} · ${payload.fingerprint?.timezone || ''}`;
+    $('ntpRegion').textContent = [payload.fingerprint?.language,payload.fingerprint?.timezone].filter(Boolean).join(' · ');
+    $('ntp-footer').textContent = window.api.platform === 'darwin' ? '⌘L 搜索或访问网址 · ⌘T 新建标签' : 'Ctrl+L 搜索或访问网址 · Ctrl+T 新建标签';
   }
   function snapshot() {
     return tabs.map(t=>({url:t.ntp?'about:home':safeUrl(t),title:t.title||'新标签',pinned:!!t.pinned,muted:!!t.muted,sleeping:!!t.sleeping}));
@@ -124,6 +128,7 @@ const StarBrowser = (() => {
     $('historyBtn').onclick=()=>togglePanel('historyPanel');$('historyClose').onclick=()=>$('historyPanel').hidden=true;
     $('historySearch').oninput=renderHistory;$('historyClear').onclick=async()=>{try{if(await window.api.historyClear(profile.id))loadHistory();}catch(error){toast(error.message);}};
     $('tabSearchBtn').onclick=()=>togglePanel('tabSearchPanel');$('tabSearchClose').onclick=()=>$('tabSearchPanel').hidden=true;$('tabSearchInput').oninput=renderTabSearch;
+    $('profileIdentityBtn').onclick=event=>panel.hidden?StarSettings.open(event.currentTarget):StarSettings.close();
     $('browserMenuBtn').onclick=()=>togglePanel('browserMenu');
     $('browserMenuBtn').setAttribute('aria-haspopup','menu');$('browserMenuBtn').setAttribute('aria-controls','browserMenu');$('browserMenuBtn').setAttribute('aria-expanded','false');
     new MutationObserver(()=>$('browserMenuBtn').setAttribute('aria-expanded',String(!$('browserMenu').hidden))).observe($('browserMenu'),{attributes:true,attributeFilter:['hidden']});

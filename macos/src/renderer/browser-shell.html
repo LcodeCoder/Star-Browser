@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; frame-src 'none'" />
   <title>Star Browser</title>
+  <link rel="stylesheet" href="palette.css" />
   <link rel="stylesheet" href="browser-base.css" />
   <link rel="stylesheet" href="browser-theme.css" />
 </head>
@@ -13,29 +14,44 @@
     <span id="geoWarnText"></span>
     <button id="geoWarnClose" class="geo-warn-x" title="关闭">✕</button>
   </div>
-  <div class="tabs-bar" id="tabsBar">
-    <img class="shell-mark" src="assets/star.svg" alt="Star Browser" />
-    <div class="tabs" id="tabs" role="tablist" aria-label="浏览器标签"></div>
-    <button class="new-tab" id="newTab" title="新标签页 ⌘T">+</button><button class="new-tab" id="tabSearchBtn" title="搜索标签页"></button>
-  </div>
-
-  <div class="toolbar" id="toolbar">
-    <button class="tb" id="back" title="后退">‹</button>
-    <button class="tb" id="forward" title="前进">›</button>
-    <button class="tb" id="reload" title="刷新">⟳</button>
-    <button class="tb" id="home" title="起始页">⌂</button>
-    <button class="tb" id="bmBtn" title="收藏夹">🔖</button>
-    <div class="spinner" id="spinner" aria-hidden="true"></div>
-    <input id="addr" type="text" placeholder="搜索或输入网址" />
-    <button class="tb" id="starBtn" title="收藏此页 / 取消收藏">☆</button>
-    <span class="badge" id="badge">浏览环境</span><span class="connection-dot"></span><span id="connectionIdentity" class="connection-identity"></span>
-    <button class="tb" id="launchBtn" title="社媒快捷启动台">🌐</button>
-    <button class="tb" id="batchBtn" title="批量代理检测">🔬</button>
-    <button class="tb" id="historyBtn" title="此环境的历史记录"></button>
-    <button class="tb" id="gear" title="环境设置">⚙</button>
-    <button class="tb" id="browserMenuBtn" title="更多浏览操作"></button>
-    <button class="tb" id="closeWin" title="关闭窗口">✕</button>
-  </div>
+  <header class="browser-chrome">
+    <div class="tabs-bar" id="tabsBar">
+      <img class="shell-mark" src="assets/star.svg" alt="Star Browser" />
+      <div class="tab-strip">
+        <div class="tabs" id="tabs" role="tablist" aria-label="浏览器标签"></div>
+        <button class="new-tab" id="newTab" type="button" title="新标签页 ⌘T">+</button>
+      </div>
+      <button id="profileIdentityBtn" class="profile-identity" type="button" title="查看与编辑当前浏览环境" aria-label="查看与编辑当前浏览环境">
+        <span class="profile-avatar" aria-hidden="true">S</span>
+        <span class="profile-identity-copy"><span class="badge" id="badge">浏览环境</span><span id="connectionIdentity" class="connection-identity"></span></span>
+        <span class="connection-dot" aria-hidden="true"></span>
+      </button>
+      <button class="new-tab" id="tabSearchBtn" type="button" title="搜索标签页"></button>
+    </div>
+    <nav class="toolbar" id="toolbar" aria-label="网页导航">
+      <div class="navigation-actions">
+        <button class="tb" id="back" type="button" title="后退">‹</button>
+        <button class="tb" id="forward" type="button" title="前进">›</button>
+        <button class="tb" id="reload" type="button" title="刷新">⟳</button>
+        <button class="tb" id="home" type="button" title="起始页">⌂</button>
+      </div>
+      <div class="address-field">
+        <span id="addressIcon" class="address-icon" aria-hidden="true"></span>
+        <input id="addr" type="text" placeholder="搜索或输入网址" aria-label="搜索或输入网址" spellcheck="false" autocomplete="off" />
+        <button class="tb" id="starBtn" type="button" title="收藏此页 / 取消收藏">☆</button>
+      </div>
+      <div class="browser-actions">
+        <button class="tb" id="bmBtn" type="button" title="收藏夹"></button>
+        <button class="tb" id="launchBtn" type="button" title="快捷启动"></button>
+        <button class="tb" id="batchBtn" type="button" title="批量代理检测"></button>
+        <button class="tb" id="historyBtn" type="button" title="此环境的历史记录"></button>
+        <button class="tb" id="gear" type="button" title="环境设置"></button>
+        <button class="tb" id="browserMenuBtn" type="button" title="更多浏览操作"></button>
+        <button class="tb" id="closeWin" type="button" title="关闭窗口"></button>
+      </div>
+      <div class="spinner" id="spinner" aria-hidden="true"></div>
+    </nav>
+  </header>
 
   <!-- 书签栏（仿 Chrome：常驻地址栏下方，点按当前标签打开，中键/右键菜单新标签或删除） -->
   <div class="bookmark-bar" id="bmBar">
@@ -45,20 +61,33 @@
 
   <div class="webviews" id="wrap"></div>
 
-  <!-- 新标签页（仿 Chrome NTP）：常用收藏 + 最常访问，自动适应用户习惯 -->
-  <div id="ntp" class="ntp" hidden>
+  <main id="ntp" class="ntp" aria-label="新标签页" hidden>
     <div class="ntp-inner">
-      <div class="ntp-brand"><img src="assets/star.svg" alt="" /><div class="ntp-logo">Star Browser</div></div><div class="ntp-environment"><span id="ntpEnvironment"></span><span id="ntpRegion"></span></div>
-      <div class="ntp-search"><input id="ntpSearch" type="text" placeholder="搜索或输入网址" /></div>
-      <div class="ntp-section-title">常用收藏</div>
-      <div class="ntp-tiles" id="ntpBookmarks"></div>
-      <div class="ntp-section-title">最常访问</div>
-      <div class="ntp-tiles" id="ntpVisits"></div>
-      <div class="ntp-section-title ntp-common-title">常用网址</div>
-      <div class="ntp-tiles" id="ntpCommon"></div>
-      <p class="ntp-footer">⌘L 搜索或访问网址 · ⌘T 新建标签 · ⌘K 在工作台快速定位</p><div id="ntpAds" class="ntp-ads" style="display:none;"></div>
+      <div class="ntp-brand"><img src="assets/star.svg" alt="" /><div class="ntp-logo">Star Browser</div></div>
+      <div class="ntp-environment"><span id="ntpEnvironment"></span><span id="ntpRegion"></span></div>
+      <div class="ntp-search">
+        <span id="ntpSearchIcon" aria-hidden="true"></span>
+        <input id="ntpSearch" type="text" placeholder="搜索或输入网址" aria-label="在新标签页搜索或输入网址" spellcheck="false" autocomplete="off" />
+        <kbd id="ntpSearchShortcut">⌘L</kbd>
+      </div>
+      <section class="ntp-section ntp-common-section" aria-labelledby="ntpCommonTitle">
+        <h2 class="ntp-section-title" id="ntpCommonTitle">常用网址</h2>
+        <div class="ntp-tiles" id="ntpCommon"></div>
+      </section>
+      <div class="ntp-personal">
+        <section class="ntp-section" aria-labelledby="ntpBookmarksTitle">
+          <h2 class="ntp-section-title" id="ntpBookmarksTitle">收藏的网站</h2>
+          <div class="ntp-tiles" id="ntpBookmarks"></div>
+        </section>
+        <section class="ntp-section" aria-labelledby="ntpVisitsTitle">
+          <h2 class="ntp-section-title" id="ntpVisitsTitle">最近常访问</h2>
+          <div class="ntp-tiles" id="ntpVisits"></div>
+        </section>
+      </div>
+      <p id="ntp-footer" class="ntp-footer">⌘L 搜索或访问网址 · ⌘T 新建标签</p>
+      <div id="ntpAds" class="ntp-ads" hidden></div>
     </div>
-  </div>
+  </main>
 
   <!-- 收藏当前页的小气泡（改名 / 改网址 / 删除） -->
   <div id="starPop" class="star-pop" role="dialog" aria-labelledby="starPopTitle" hidden>

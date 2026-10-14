@@ -298,7 +298,7 @@ function applyProxyPaste() {
   StarSettings.proxyPasted();toast("已填入代理配置，保存后应用");
 }
 
-$("gear").addEventListener("click", () => panel.hidden ? StarSettings.open() : StarSettings.close());
+$("gear").addEventListener("click", event => panel.hidden ? StarSettings.open(event.currentTarget) : StarSettings.close());
 $("s-close").addEventListener("click", () => StarSettings.close());
 $("s-cancel").addEventListener("click", () => StarSettings.close());
 $("s-paste-go").addEventListener("click", () => applyProxyPaste());
@@ -406,6 +406,12 @@ const launcher = $("launcher");
 // 内容结构：{ groups:[{title, items:[{name,url}]}], ads:[{name,url}] }
 // 优先取服务端 JSON（见 main.js 的 LAUNCHER_CONFIG_URL），取不到时回落下面的内置默认，
 // 保证离线可用；上线后改 JSON 即可增删站点 / 广告，无需重新发版。
+const DEFAULT_COMMON_URLS = [
+  {name:"Google",url:"https://www.google.com"},
+  {name:"GitHub",url:"https://github.com"},
+  {name:"Wikipedia",url:"https://www.wikipedia.org"},
+  {name:"BrowserLeaks",url:"https://browserleaks.com"},
+];
 const DEFAULT_LAUNCHER = {groups:[{title:"检测与工具",items:[{name:"BrowserLeaks",url:"https://browserleaks.com"},{name:"Google",url:"https://www.google.com"}]}]};
 
 function renderLauncher(cfg) {
@@ -500,6 +506,7 @@ async function loadManifest() {
   }
 }
 renderLauncher(DEFAULT_LAUNCHER);
+renderCommonUrls(DEFAULT_COMMON_URLS);
 
 // NTP / 工作台首页广告位（读 manifest.ads，云端改 JSON 即换，无需发版）
 function renderAdsToNtp(ads) {
@@ -546,42 +553,16 @@ function renderAdsToNtp(ads) {
   if (grid.children.length) box.appendChild(grid);
 }
 
-// NTP 常用网址（读 manifest.commonUrls，云端改 JSON 即换，无需发版）
+// Common sites use this environment's session, including keyboard navigation.
 function renderCommonUrls(list) {
   const box = $("ntpCommon");
   if (!box) return;
-  box.innerHTML = "";
-  if (!Array.isArray(list) || !list.length) {
-    box.style.display = "none";
-    return;
+  box.replaceChildren();
+  for (const item of Array.isArray(list) ? list : []) {
+    if (!item || !/^https?:\/\//i.test(item.url || "")) continue;
+    box.appendChild(ntpTile(item.name || item.url, item.url, () => StarBrowser.navigate(item.url)));
   }
-  box.style.display = "";
-  list.forEach((it) => {
-    if (!it || !it.url) return;
-    const tile = document.createElement("div");
-    tile.className = "ntp-tile";
-    tile.title = it.name || it.url;
-    const img = document.createElement("img");
-    img.className = "ntp-fav";
-    img.alt = "";
-    img.src = faviconFor(it.url);
-    img.addEventListener("error", () => {
-      try {
-        img.replaceWith(letterAvatar(it.name || it.url));
-      } catch (_) {}
-    });
-    const span = document.createElement("span");
-    span.className = "ntp-label";
-    span.textContent = it.name || it.url;
-    tile.appendChild(img);
-    tile.appendChild(span);
-    tile.addEventListener("click", () => {
-      try {
-        window.api.openExternal(it.url);
-      } catch (_) {}
-    });
-    box.appendChild(tile);
-  });
+  box.closest("section").hidden = !box.children.length;
 }
 
 // ---------------- 在线公告弹窗（announcements 配置驱动；本页 loadManifest 调用） ----------------
@@ -1076,7 +1057,11 @@ function showNtp() {
   if (!t) return;
   $("ntp").hidden = false;
   t.ntp = true;
+  t.title = "新标签";
+  disarmNav(); hideFatal();
   addr.value = "";
+  document.title = winTitle(t.title);
+  renderTabs(); syncLoading();
   try {
     $("ntpSearch").value = "";
   } catch (_) {}
@@ -1100,7 +1085,7 @@ async function renderNtp() {
   });
   if (!bmCache.length && bmBox)
     bmBox.innerHTML =
-      '<div class="ntp-empty">还没有收藏，点地址栏 ☆ 即可收藏常用网站</div>';
+      '<div class="ntp-empty">点击地址栏的星标，收藏常用网站。</div>';
   try {
     const visits = profile ? (await window.api.historyTop(profile.id,8)) || [] : [];
     const vBox = $("ntpVisits");
@@ -1119,7 +1104,7 @@ async function renderNtp() {
       });
     if (vBox && !vBox.children.length)
       vBox.innerHTML =
-        '<div class="ntp-empty">还没有访问记录，多用浏览器就会自动出现在这里</div>';
+        '<div class="ntp-empty">访问的网站会出现在这里。</div>';
   } catch (e) {}
 }
 function ntpTile(title, url, onClick) {
@@ -1401,11 +1386,12 @@ function renderTabs() {
     el.setAttribute("role","tab");el.setAttribute("aria-selected",String(t.id===activeId));el.tabIndex=t.id===activeId?0:-1;
     el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();activateTab(t.id);}if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();StarBrowser.command(e.key==="ArrowRight"?"next-tab":"previous-tab");tabsEl.querySelector('[aria-selected="true"]')?.focus();}});
     el.innerHTML =
-      '<span class="title"></span><button class="close" title="关闭标签">×</button>';
+      '<img class="tab-icon" alt="" /><span class="title"></span><button class="close" title="关闭标签">'+StarBrowser.icon('X')+'</button>';
+    el.querySelector('.tab-icon').src = t.ntp ? 'assets/star.svg' : faviconFor(t.url);
     el.querySelector(".title").textContent = t.title === "about:blank" && !t.ntp ? "正在打开…" : t.title || "新标签";
     el.querySelector(".close").setAttribute("aria-label","关闭 "+(t.title||"新标签"));
     el.addEventListener("click", (e) => {
-      if (e.target.classList.contains("close")) return;
+      if (e.target.closest(".close")) return;
       activateTab(t.id);
     });
     el.querySelector(".close").addEventListener("click", (e) => {
@@ -1672,6 +1658,7 @@ if (window.api) {
       const t0 = profile.fingerprint && profile.fingerprint.timezone;
       const l0 = profile.fingerprint && profile.fingerprint.language;
       profile.fingerprint = fp;
+      StarBrowser.init(profile);
       if (t0 !== fp.timezone || l0 !== fp.language) {
         rebuildAllTabs();
         toast("已根据出口 IP 自动同步时区/语言");

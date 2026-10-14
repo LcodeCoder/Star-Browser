@@ -1,6 +1,7 @@
 /* Browser settings share main-process validation and keep the draft until saved. */
 var StarSettings = (() => {
-  let saving = false, manualLanguage = false, requestVersion = 0, baseline = '', previousFocus = null, pendingFocus = null;
+  let saving = false, manualLanguage = false, requestVersion = 0, baseline = '', previousFocus = null, pendingFocus = null, returnFocus = null;
+  const triggers = ['gear','profileIdentityBtn'].map(id => $(id)).filter(Boolean);
   const disabled = new Map();
   const draftIds = ['s-start','s-country','s-language','s-timezone','s-proxyOn','s-type','s-host','s-user','s-pass','s-webrtc','s-regen','s-note','s-tags','s-paste'];
   const fieldIds = {startUrl:'s-start',country:'s-country',language:'s-language',timezone:'s-timezone',webrtc:'s-webrtc','proxy.host':'s-host','proxy.port':'s-host','proxy.type':'s-type','proxy.user':'s-user','proxy.pass':'s-pass'};
@@ -46,15 +47,17 @@ var StarSettings = (() => {
       const option = document.createElement('option'); option.value = value; option.textContent = value; select.append(option);
     }
   }
-  function open() {
+  function open(trigger = $('gear')) {
     if (!profile || saving) return;
+    returnFocus = triggers.includes(trigger) ? trigger : $('gear');
     fillCountries(); fillLanguages(); fillTimezones();
     addOption('s-language',profile.langManual ? profile.language : profile.fingerprint?.language || profile.language);
     addOption('s-timezone',profile.timezone); syncPanelFromProfile(); $('s-paste').value = '';
     manualLanguage = !!profile.langManual; updateLanguage(); updateProxy(); error(''); showDiscard(false);
     baseline = snapshot(); previousFocus = null; requestVersion++;
     $('s-check-result').textContent = ''; $('s-check-result').hidden = true;
-    panel.hidden = false; $('settingsOverlay').hidden = false; $('gear').setAttribute('aria-expanded','true'); $('s-start').focus();
+    panel.hidden = false; $('settingsOverlay').hidden = false;
+    triggers.forEach(button => button.setAttribute('aria-expanded','true')); $('s-start').focus();
   }
   function close(force = false) {
     if (panel.hidden) return true;
@@ -64,7 +67,8 @@ var StarSettings = (() => {
       showDiscard(true); $('s-continue').focus(); return false;
     }
     requestVersion++; pendingFocus = null; panel.hidden = true; $('settingsOverlay').hidden = true;
-    showDiscard(false); $('gear').setAttribute('aria-expanded','false'); $('gear').focus(); return true;
+    showDiscard(false); triggers.forEach(button => button.setAttribute('aria-expanded','false'));
+    (returnFocus?.isConnected && returnFocus.getClientRects().length ? returnFocus : $('gear')).focus(); return true;
   }
   function proxyDraft() {
     const hp = parseProxy($('s-host').value);
@@ -133,6 +137,6 @@ var StarSettings = (() => {
       else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
     }
   },true);
-  $('gear').setAttribute('aria-haspopup','dialog'); $('gear').setAttribute('aria-expanded','false');
+  triggers.forEach(button => { button.setAttribute('aria-haspopup','dialog'); button.setAttribute('aria-controls','settings'); button.setAttribute('aria-expanded','false'); });
   return {open,close,beginSave,endSave,error,resetLanguage,resetTimezone,proxyPasted,dirty,languageManual:() => manualLanguage,checkProxy};
 })();

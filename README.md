@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/LcodeCoder/Star-Browser/releases">版本与下载</a> ·
   <a href="macos/docs/capabilities.md">功能与范围</a> ·
-  <a href="macos/docs/release-0.14.0.md">版本说明</a> ·
+  <a href="macos/docs/release-0.15.0.md">版本说明</a> ·
   <a href="macos/docs/verification.md">验证记录</a>
 </p>
 
@@ -17,14 +17,14 @@ Star Browser 是面向日常多环境工作的桌面浏览器，支持 **Windows
 
 ## 下载
 
-当前源码版本：**0.14.0**。本轮安装包已在本地构建，尚未上传到 GitHub Release；发布后可从下列版本页面下载。
+当前源码版本：**0.15.0**。本轮安装包已在本地构建，尚未上传到 GitHub Release；发布后可从下列版本页面下载。
 
 | 平台 | 架构 | 安装包 |
 | --- | --- | --- |
 | Windows | x64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:win` |
 | macOS | Apple Silicon / arm64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:mac` |
 
-macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本轮已完成 Mac arm64 打包应用烟测及 Windows x64 构建；GitHub Actions 38481943447 的 macOS、Windows 与内核准备检查均通过，Windows 打包应用实际启动完成 12 项检查。Windows 用户设备上的安装与运行验收仍需实际验证。
+macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本版本的构建、资源匹配与打包运行结果见 [0.15.0 版本说明](macos/docs/release-0.15.0.md)。
 
 ## 功能
 
@@ -33,9 +33,17 @@ macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证�
 - **指纹配置与检查**：管理语言、时区、屏幕、UA / Client Hints 和手动 WebGL 配置，覆盖页面及 Dedicated / Shared / Service Worker，提供实际差异报告与 BrowserScan / BrowserLeaks 检测入口。
 - **浏览器日常操作**：多标签、固定、静音、休眠与恢复，以及书签、独立历史、下载管理、站点权限和当前标签 DevTools。
 - **本地工作流**：加密环境备份与恢复、扩展管理、窗口同步、本地任务编排、任务导入导出和带密钥的本地 API；结果保存失败时保留真实结果并支持重试。
-- **浅色与深色界面**：工作台和浏览器共享主题，深色界面采用分层深蓝配色，网页画布保留正常背景，支持键盘操作与窄窗口布局，未保存的工作台编辑也会在系统关窗和退出时受到保护。
+- **浅色与深色界面**：工作台和浏览器共享主题，浅色界面采用白色与浅灰，深色界面采用中性灰，网页画布保留正常背景，采用紧凑标签栏、宽地址栏与简洁新标签页，支持键盘操作与窄窗口布局，未保存的工作台编辑也会在系统关窗和退出时受到保护。
 
 具体实现、验证范围及待完善能力见 [功能与范围](macos/docs/capabilities.md)。
+
+## 界面
+
+工作台和浏览器使用统一的白色、浅灰和中性深灰配色。标签、网址输入和当前环境分开呈现；新标签页支持搜索、常用网址、收藏与最近访问。
+
+![Star Browser 新标签页](macos/docs/images/browser-0.15.0-light.png)
+
+![Star Browser 工作台](macos/docs/images/workbench-0.15.0-light.png)
 
 ## 本地运行
 
@@ -62,7 +70,7 @@ npm start
 
 Intel Mac 与 Windows ARM64 提供构建入口，兼容性需要在对应设备上验证。macOS 打包需在 macOS 上执行。
 
-构建后运行 `npm run verify:artifacts`，核对四个发行文件的完整性、实际程序架构、版本和全部运行资源，生成 `SHA256SUMS-0.14.0.txt`。只构建一个平台时，使用 `-- --platform mac` 或 `-- --platform win`；其他架构可再指定 `--arch x64` 或 `--arch arm64`。
+构建后运行 `npm run verify:artifacts`，核对四个发行文件的完整性、实际程序架构、版本和全部运行资源，生成 `SHA256SUMS-0.15.0.txt`。只构建一个平台时，使用 `-- --platform mac` 或 `-- --platform win`；其他架构可再指定 `--arch x64` 或 `--arch arm64`。
 
 ## 验证
 
@@ -70,6 +78,7 @@ Intel Mac 与 Windows ARM64 提供构建入口，兼容性需要在对应设备�
 npm test
 npm run test:workbench-browser
 npm run test:experience
+npm run test:browser-newtab
 npm run test:diagnostics
 npm run test:cookie-workspace
 npm run test:proxy-workspace
@@ -88,10 +97,10 @@ npm run test:e2e
 
 ## 项目文档
 
-- [0.14.0 版本说明](macos/docs/release-0.14.0.md)
+- [0.15.0 版本说明](macos/docs/release-0.15.0.md)
 - [功能与实际范围](macos/docs/capabilities.md)
 - [验证记录](macos/docs/verification.md)
-- [工作台设计](macos/docs/workbench-design-0.14.md)
+- [浏览器与工作台设计](macos/docs/browser-design-0.15.md)
 - [迭代计划](macos/docs/iteration-plan.md)
 - [工程说明](macos/README.md)
 - [第三方声明](macos/THIRD_PARTY_NOTICES.md)

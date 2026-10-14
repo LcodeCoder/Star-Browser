@@ -1,7 +1,7 @@
 'use strict';
 const {_electron}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net');
 const {startOrigin}=require('./fixtures.cjs');
-const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-experience-')),out=path.resolve('test-results/star-0.13.0'),results=[],errors=[];
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-experience-')),out=path.resolve('test-results/star-'+require('../package.json').version,process.env.STAR_QA_EXECUTABLE?'packaged':''),results=[],errors=[];
 let app,manager,browser,origin,slow;const sockets=new Set();fs.mkdirSync(out,{recursive:true});
 async function until(run,timeout=16000){const end=Date.now()+timeout;while(Date.now()<end){const value=await run();if(value)return value;await new Promise(resolve=>setTimeout(resolve,60));}throw new Error('体验验收等待超时');}
 async function api(method,...args){return manager.evaluate(({method,args})=>window.api[method](...args),{method,args});}

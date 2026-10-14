@@ -138,7 +138,7 @@ function prepareGuestFingerprint(wc, fingerprint) {
 const HOME_HTML = fs.readFileSync(
   path.join(__dirname, "../renderer/home.html"),
   "utf-8",
-);
+).replace("/* STAR_PALETTE */", fs.readFileSync(path.join(__dirname, "../renderer/palette.css"), "utf-8"));
 const HOME_URL =
   "data:text/html;charset=utf-8," + encodeURIComponent(HOME_HTML);
 // 快捷启动台「在线配置」地址：把 JSON 放到你自己的服务器上，即可随时增删站点/广告而无需重新发版。
@@ -505,6 +505,10 @@ function createBrowseWindow(profile, fingerprint) {
     height: 820,
     minWidth: 640,
     minHeight: 500,
+    ...(process.platform === "darwin" ? {
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 14, y: 14 },
+    } : {}),
     title:
       "Star Browser · " + (profile.name || "浏览环境"),
     webPreferences: {
