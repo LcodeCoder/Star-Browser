@@ -53,7 +53,7 @@ macOS 必须提供完整 `.app` 内的启动文件。Windows 必须提供从 `ou
 
 GitHub Actions 的 `Native Chromium build and acceptance` 工作流可手动选择 Windows、Mac 或两者。它使用固定源码提交和实际 gclient 依赖，分别记录准备、checkout、GN、Chrome 编译、运行包整理、运行验收和原生单测。失败保留实际阶段、日志和报告，不把源码检查记作编译通过。
 
-构建使用非官方 release 配置，关闭调试符号、remote execution 与 ThinLTO。Windows 原生 x64 使用系统 Visual Studio C++ 工具链及固定 SDK；Mac 原生 arm64 使用系统完整 Xcode。只在可丢弃的 GitHub-hosted Mac 上清理未使用的 Xcode，保留当前选择的 bundle 及指向它的别名。脚本拒绝本机和 self-hosted runner 的这类准备操作。
+构建使用非官方 release 配置，关闭调试符号、remote execution 与 ThinLTO。Windows 原生 x64 使用系统 Visual Studio C++ 工具链，准备脚本在可丢弃的托管 runner 上补齐 Windows SDK 10.0.28000.2270（工具目录 10.0.28000.0）与 x64 调试工具。固定 Microsoft 安装程序 URL 和 SHA-256，并要求有效的 Microsoft Authenticode 签名；保留安装日志，核实实际头文件、库、rc.exe 与 cdb.exe 后才继续 checkout。Mac 原生 arm64 使用系统完整 Xcode。只在可丢弃的 GitHub-hosted Mac 上清理未使用的 Xcode，保留当前选择的 bundle 及指向它的别名。脚本拒绝本机和 self-hosted runner 的这类准备操作。
 
 标准托管构建机的 CPU、RAM 和作业期限仍可能限制完整构建。启动工作流不等于完成编译；运行包、原生单测与每项验收报告才是结果。
 

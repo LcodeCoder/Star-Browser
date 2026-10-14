@@ -116,6 +116,12 @@ class Pipeline:
             self.environment['VSINSTALLDIR'] = installation + os.sep
             self.environment['vs2026_install'] = installation
             self.report['visualStudio'] = installation
+            self.execute(['pwsh', '-NoProfile', '-NonInteractive', '-File',
+                          kernel.ROOT / 'scripts/install_windows_sdk.ps1', '-Reports', self.reports])
+            self.report['windowsSdkSetup'] = json.loads(
+                (self.reports / 'windows-sdk.json').read_text(encoding='utf-8-sig'))
+            if self.report['windowsSdkSetup']['status'] != 'passed':
+                raise RuntimeError('Required Windows SDK setup did not pass')
             sdk_root = Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Windows Kits/10'
             sdks = sorted(path.name for path in (sdk_root / 'Include').glob('*') if path.is_dir())
             self.report['windowsSdks'] = sdks

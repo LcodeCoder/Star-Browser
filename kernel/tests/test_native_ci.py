@@ -7,6 +7,8 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from collections import namedtuple
+import subprocess
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
@@ -45,6 +47,59 @@ class NativeCITests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'disposable GitHub-hosted'):
                     self.pipeline.provision()
                 execute.assert_not_called()
+
+    def windows_provision_fixture(self, sdk_status='passed', fail_setup=False):
+        files = self.root / 'program-files'
+        (files / 'Windows Kits/10/Include/10.0.28000.0').mkdir(parents=True)
+        installation = str(files / 'Microsoft Visual Studio/18/Enterprise')
+
+        def execute(args, *unused, **kwargs):
+            if Path(str(args[0])).name == 'vswhere.exe':
+                return installation + '\n'
+            if str(args[0]) == 'pwsh':
+                if fail_setup:
+                    raise subprocess.CalledProcessError(1, 'pwsh')
+                (self.pipeline.reports / 'windows-sdk.json').write_text(
+                    json.dumps({'status': sdk_status, 'kitVersion': '10.0.28000.0'}),
+                    encoding='utf-8-sig')
+            return ''
+
+        return files, installation, execute
+
+    def test_sdk_install_failure_stops_before_source_checkout(self):
+        files, _, execute = self.windows_provision_fixture(fail_setup=True)
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
+                                     'ProgramFiles(x86)': str(files)}):
+            with patch.object(native_ci.sys, 'platform', 'win32'):
+                with patch.object(self.pipeline, 'execute', side_effect=execute):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        self.pipeline.provision()
+        self.assertFalse(self.pipeline.source.exists())
+        self.assertFalse(self.pipeline.report['compiledChromium'])
+
+    def test_nonpassing_sdk_report_stops_provision_even_after_zero_exit(self):
+        files, _, execute = self.windows_provision_fixture(sdk_status='failed')
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
+                                     'ProgramFiles(x86)': str(files)}):
+            with patch.object(native_ci.sys, 'platform', 'win32'):
+                with patch.object(self.pipeline, 'execute', side_effect=execute):
+                    with self.assertRaisesRegex(RuntimeError, 'SDK setup did not pass'):
+                        self.pipeline.provision()
+        self.assertFalse(self.pipeline.source.exists())
+
+    def test_actual_sdk_setup_preserves_verified_vs_path(self):
+        files, installation, execute = self.windows_provision_fixture()
+        usage = namedtuple('Usage', 'total used free')(300 * 1024**3, 100 * 1024**3, 200 * 1024**3)
+        with patch.dict(os.environ, {'GITHUB_ACTIONS': 'true', 'RUNNER_ENVIRONMENT': 'github-hosted',
+                                     'ProgramFiles(x86)': str(files)}):
+            with patch.object(native_ci.sys, 'platform', 'win32'):
+                with patch.object(self.pipeline, 'execute', side_effect=execute):
+                    with patch.object(native_ci.shutil, 'disk_usage', return_value=usage):
+                        self.pipeline.provision()
+        self.assertEqual(self.pipeline.environment['vs2026_install'], installation)
+        self.assertEqual(self.pipeline.report['windowsSdks'], ['10.0.28000.0'])
+        self.assertEqual(self.pipeline.report['windowsSdkSetup']['status'], 'passed')
+        self.assertFalse(self.pipeline.report['compiledChromium'])
 
     def stage_fixture(self):
         output = self.pipeline.source / 'out/native'
