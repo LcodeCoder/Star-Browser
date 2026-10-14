@@ -8,6 +8,7 @@ const {
   dialog,
   session,
   net,
+  screen: electronScreen,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -15,13 +16,18 @@ const { pathToFileURL } = require("url");
 const { Store } = require("./store");
 const { launchProfile, findChrome, getLaunchedBrowser } = require("./launcher");
 const {
-  generateFingerprint,
+  generateFingerprint: generateFingerprintBase,
   resolveGeo,
   offsetToTz,
   TIMEZONES,
   LOCALES,
 } = require("./fingerprint");
 const crypto = require("crypto");
+function generateFingerprint(seed, options = {}) {
+  const nativeDisplay = app.isReady()
+    ? require('./display-settings').displaySnapshot(electronScreen.getPrimaryDisplay()) : null;
+  return generateFingerprintBase(seed, {...options, nativeDisplay});
+}
 
 // 开发与自动化测试可使用独立数据目录；正式运行沿用 Electron 的 macOS userData。
 if (process.env.TFB_USER_DATA_DIR) {

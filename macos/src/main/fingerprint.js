@@ -545,8 +545,13 @@ function generateFingerprint(seed, opts = {}) {
   result.userAgent = userAgent;
   result.noise = Object.assign({canvas:false,audio:false,webgl:false,clientRects:false},opts.fingerprint?.noise||{});
   result.protocolManaged = true;
+  result.displayMode = require('./display-settings').displayMode(opts.fingerprint);
+  if (result.displayMode === 'native') {
+    if (opts.nativeDisplay) Object.assign(result, opts.nativeDisplay);
+    result.nativeDisplayPending = !opts.nativeDisplay;
+  }
   for(const key of ['audioSampleRate','fonts','mediaDevices','speechVoices','plugins'])delete result[key];
-  result.nativeSignals=Object.keys(result.noise).filter(key=>!result.noise[key]).concat(['fonts','mediaDevices','speechVoices','plugins','audioSampleRate','webgpu','tls','dns']);
+  result.nativeSignals=Object.keys(result.noise).filter(key=>!result.noise[key]).concat(['fonts','mediaDevices','speechVoices','plugins','audioSampleRate','webgpu','tls','dns'],result.displayMode==='native'?['screen','devicePixelRatio']:[]);
   return result;
 }
 

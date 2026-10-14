@@ -43,6 +43,10 @@ function validateProfile(input = {}, creating = false) {
   if (input.fingerprint !== undefined) {
     const fp = input.fingerprint || {};
     out.fingerprint = {};
+    if (fp.displayMode !== undefined) {
+      if (!['native', 'custom'].includes(fp.displayMode)) invalid('显示策略无效', 'fingerprint.displayMode');
+      out.fingerprint.displayMode = fp.displayMode;
+    }
     for (const [key, values] of Object.entries({hardwareConcurrency:[2,4,8,12,16,24,32], deviceMemory:[2,4,8], devicePixelRatio:[1,1.25,1.5,2,2.5,3]})) {
       if (fp[key] !== undefined && fp[key] !== '') {
         if (!values.includes(Number(fp[key]))) invalid('硬件配置不在支持的范围内', 'fingerprint.' + key);

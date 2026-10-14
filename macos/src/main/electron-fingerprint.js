@@ -106,6 +106,7 @@ async function prepareElectronFingerprint(app,wc,fp,sourceFor) {
   const send=(method,params)=>state.pipe.send(method,params,page.sessionId);
   await send('Page.enable');
   await require('./fingerprint-protocol').applyProtocol(send,fp);
+  await require('./display-settings').captureDisplay(send,fp,wc.getZoomFactor());
   if(page.scriptId)await send('Page.removeScriptToEvaluateOnNewDocument',{identifier:page.scriptId});
   page.scriptId=(await send('Page.addScriptToEvaluateOnNewDocument',{source:sourceFor(fp),runImmediately:true})).identifier;
   await send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:FILTER});

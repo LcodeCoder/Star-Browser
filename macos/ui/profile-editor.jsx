@@ -7,8 +7,9 @@ import {COUNTRIES, LANGUAGES, TIMEZONES} from "./profile-options";
 import {validateProfile, ProfileValidationError} from "../src/main/profile-validation";
 import {parseProxyInput} from "../src/main/proxy-parse";
 import {submitShortcut} from "./editor-state";
+import {displayMode} from "../src/main/display-settings";
 const SECTIONS = [["basic", "基本信息"], ["network", "网络连接"], ["locale", "语言与时区"], ["extensions", "扩展"], ["advanced", "指纹与权限"]];
-const FIELD_IDS = {"name": "f_name", "os": "f_os", "country": "f_country", "startUrl": "f_url", "proxy.type": "f_proxy_type", "proxy.host": "f_proxy_host", "proxy.port": "f_proxy_port", "proxy.user": "f_proxy_user", "proxy.pass": "f_proxy_pass", "language": "f_language", "timezone": "f_timezone", "fingerprint.hardwareConcurrency": "f_cpu", "fingerprint.deviceMemory": "f_memory", "fingerprint.devicePixelRatio": "f_dpr", "fingerprint.screen.width": "f_screen_width", "fingerprint.screen.height": "f_screen_height", "fingerprint.webgl.renderer": "f_webgl_renderer", "fingerprint.webgl.vendor": "f_webgl_vendor"};
+const FIELD_IDS = {"fingerprint.displayMode": "f_display_mode", "name": "f_name", "os": "f_os", "country": "f_country", "startUrl": "f_url", "proxy.type": "f_proxy_type", "proxy.host": "f_proxy_host", "proxy.port": "f_proxy_port", "proxy.user": "f_proxy_user", "proxy.pass": "f_proxy_pass", "language": "f_language", "timezone": "f_timezone", "fingerprint.hardwareConcurrency": "f_cpu", "fingerprint.deviceMemory": "f_memory", "fingerprint.devicePixelRatio": "f_dpr", "fingerprint.screen.width": "f_screen_width", "fingerprint.screen.height": "f_screen_height", "fingerprint.webgl.renderer": "f_webgl_renderer", "fingerprint.webgl.vendor": "f_webgl_vendor"};
 const blankProfile = { name: "", group: "", note: "", tags: [], os: window.api?.platform === "win32" ? "win" : "mac", country: "US", language: "", timezone: "", startUrl: "about:home", proxy: null, restoreSession: true, webrtc: "disable", fingerprint: {}, permissions: {}, extensions: [] };
 export function ProfileEditor({ profile, onClose }) {
   const { snapshot, refresh, notify } = useWorkspace();
@@ -32,6 +33,7 @@ export function ProfileEditor({ profile, onClose }) {
   const formRef = useRef(null);
   const [discard, setDiscard] = useState(false);
   const [activeSection, setActiveSection] = useState("basic");
+  const [editDisplayValues, setEditDisplayValues] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(() => window.innerWidth > 800);
   const [proxyNotice, setProxyNotice] = useState("");
   const dirty = JSON.stringify(form) !== initial.current;
@@ -69,6 +71,7 @@ export function ProfileEditor({ profile, onClose }) {
     const fallback = document.getElementById(FIELD_IDS[field]);
     const control = target || fallback;
     if (!control) return;
+    if (control.disabled && field?.startsWith("fingerprint.")) setEditDisplayValues(true);
     const details = control.closest("details");
     if (details) details.open = true;
     requestAnimationFrame(() => { control.focus({preventScroll: true}); control.scrollIntoView({block: "center", behavior: "instant"}); trackSection(); });
@@ -105,6 +108,8 @@ export function ProfileEditor({ profile, onClose }) {
       locateError(failure.field);
     } finally { setBusy(false); }
   };
+  const nativeDisplay = displayMode(form.fingerprint) === "native";
+  const displayValuesDisabled = nativeDisplay && !editDisplayValues;
   const rows = [
     ["操作系统", osName(form.os)],
     ["国家 / 地区", COUNTRIES.find(([code]) => code === form.country)?.[1] || form.country],
@@ -113,8 +118,8 @@ export function ProfileEditor({ profile, onClose }) {
     ["时区", form.timezone || "随网络出口"],
     ["处理器", form.fingerprint.hardwareConcurrency ? form.fingerprint.hardwareConcurrency + " 核心" : "按种子生成"],
     ["内存", form.fingerprint.deviceMemory ? form.fingerprint.deviceMemory + " GB" : "按种子生成"],
-    ["屏幕", form.fingerprint.screen?.width || form.fingerprint.screen?.height ? `${form.fingerprint.screen.width || "未填宽度"} × ${form.fingerprint.screen.height || "未填高度"}` : "按种子生成"],
-    ["像素比", form.fingerprint.devicePixelRatio || "按种子生成"],
+    ["屏幕", nativeDisplay ? "原生一致" : form.fingerprint.screen?.width || form.fingerprint.screen?.height ? `${form.fingerprint.screen.width || "未填宽度"} × ${form.fingerprint.screen.height || "未填高度"}` : "按种子生成"],
+    ["像素比", nativeDisplay ? "随显示器与页面缩放" : form.fingerprint.devicePixelRatio || "按种子生成"],
     ["WebRTC", form.webrtc === "disable" ? "关闭" : "启用受限连接"],
     ["扩展", `${form.extensions.length} 个已选择`],
   ];
@@ -419,8 +424,24 @@ export function ProfileEditor({ profile, onClose }) {
                 ))}
               </select>
             </Field>
-            <Field label="像素比" id="f_dpr" error={fieldError("fingerprint.devicePixelRatio")}>
+            <Field label="显示策略" id="f_display_mode" className="span-2" error={fieldError("fingerprint.displayMode")}>
+              <select value={nativeDisplay ? "native" : "custom"} onChange={e => fpSet("displayMode", e.target.value)} aria-describedby="displayModeHelp">
+                <option value="native">原生一致（推荐）</option>
+                <option value="custom">自定义尺寸与像素比</option>
+              </select>
+              <p className="muted" id="displayModeHelp">{nativeDisplay
+                ? "页面、跨源框架与 CSS 使用同一套原生显示参数，随显示器和页面缩放调整。自定义值会保留，切换回自定义时可继续使用。"
+                : "自定义值保持稳定。当前内置内核的跨进程框架仍可能返回原生参数，请通过网页检查确认。"}</p>
+            </Field>
+            {nativeDisplay && <div className="span-2">
+              <Button type="button" variant="ghost" aria-expanded={editDisplayValues} onClick={() => setEditDisplayValues(value => !value)}>
+                {editDisplayValues ? "收起备用自定义参数" : "编辑备用自定义参数"}
+              </Button>
+              {editDisplayValues && <p className="muted">以下参数会保存为备用值，切换到自定义显示后生效。</p>}
+            </div>}
+            <Field label={nativeDisplay ? "备用像素比" : "像素比"} id="f_dpr" error={fieldError("fingerprint.devicePixelRatio")}>
               <select
+                disabled={displayValuesDisabled}
                 value={form.fingerprint.devicePixelRatio || ""}
                 onChange={(e) => fpSet("devicePixelRatio", e.target.value)}
               >
@@ -434,6 +455,7 @@ export function ProfileEditor({ profile, onClose }) {
             </Field>
             <Field label="屏幕宽度" id="f_screen_width" error={fieldError("fingerprint.screen.width")}>
               <input
+                disabled={displayValuesDisabled}
                 aria-label="屏幕宽度"
                 type="number"
                 min={320}
@@ -450,6 +472,7 @@ export function ProfileEditor({ profile, onClose }) {
             </Field>
             <Field label="屏幕高度" id="f_screen_height" error={fieldError("fingerprint.screen.height")}>
               <input
+                disabled={displayValuesDisabled}
                 aria-label="屏幕高度"
                 type="number"
                 min={320}

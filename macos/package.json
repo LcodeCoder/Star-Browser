@@ -1,6 +1,6 @@
 {
   "name": "star-browser",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": true,
   "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
@@ -9,7 +9,7 @@
   "tfbMode": "changyi",
   "scripts": {
     "start": "npm run build:ui && electron .",
-    "test": "node --test tests/unit.test.cjs tests/proxy-readiness.test.cjs tests/fingerprint-native-mode.test.cjs tests/proxy-import.test.cjs tests/storage-atomicity.test.cjs tests/task-quit-guard.test.cjs tests/editor-close-guard.test.cjs tests/backup-consistency.test.cjs",
+    "test": "node --test tests/unit.test.cjs tests/proxy-readiness.test.cjs tests/fingerprint-native-mode.test.cjs tests/proxy-import.test.cjs tests/storage-atomicity.test.cjs tests/task-quit-guard.test.cjs tests/editor-close-guard.test.cjs tests/backup-consistency.test.cjs tests/display-settings.test.cjs",
     "test:e2e": "node tests/e2e.cjs",
     "test:package": "node tests/package-smoke.cjs",
     "verify:source": "node scripts/verify-source.cjs",
@@ -43,6 +43,7 @@
     "test:workspace-editors": "node tests/workspace-editors.cjs",
     "test:launch-experience": "node tests/launch-experience.cjs",
     "test:proxy-readiness": "node --test tests/proxy-readiness.test.cjs",
+    "test:display": "node tests/display-consistency.cjs",
     "test:external-display": "node tests/external-display.cjs",
     "test:creepjs:local": "node tests/creepjs-local.cjs",
     "test:browser-bookmarks": "node tests/browser-bookmarks.cjs",

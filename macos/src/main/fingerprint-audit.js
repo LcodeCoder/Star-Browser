@@ -1,14 +1,29 @@
 'use strict';
+// Check the stylesheet engine as well as matchMedia. CSP-blocked styles stay unread.
+function displayObservation(width,height){
+ const id='star-display-audit-'+Math.random().toString(36).slice(2),style=document.createElement('style'),box=document.createElement('span');
+ const dimensions={width:width??screen.width,height:height??screen.height},dpr=devicePixelRatio;
+ const screenQuery='(device-width: '+dimensions.width+'px) and (device-height: '+dimensions.height+'px)',dprQuery='(resolution: '+dpr+'dppx)';
+ const value={screen:screen.width+' × '+screen.height,displayScreen:{width:screen.width,height:screen.height},dpr,screenMedia:matchMedia(screenQuery).matches,dprMedia:matchMedia(dprQuery).matches,screenStyle:null,dprStyle:null};
+ box.id=id;box.setAttribute('aria-hidden','true');
+ style.textContent='#'+id+' {--star-audit-ready:1;--star-audit-screen:0;--star-audit-dpr:0;display:none!important} @media '+screenQuery+' {#'+id+' {--star-audit-screen:1}} @media '+dprQuery+' {#'+id+' {--star-audit-dpr:1}}';
+ try{document.documentElement.append(style,box);const computed=getComputedStyle(box);if(computed.getPropertyValue('--star-audit-ready').trim()==='1'){value.screenStyle=computed.getPropertyValue('--star-audit-screen').trim()==='1';value.dprStyle=computed.getPropertyValue('--star-audit-dpr').trim()==='1';}}
+ finally{style.remove();box.remove();}
+ return value;
+}
+function displaySource(fp,{frame=false}={}){return '('+displayObservation.toString()+')('+((!frame&&fp.displayMode==='native')?'undefined,undefined':JSON.stringify(fp.screen.width)+','+JSON.stringify(fp.screen.height))+')';}
+
 function readWorkerSource(){return `(async()=>({ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,locale:new Intl.DateTimeFormat().resolvedOptions().locale,numberLocale:new Intl.NumberFormat().resolvedOptions().locale,tz:new Intl.DateTimeFormat().resolvedOptions().timeZone,uaHints:await navigator.userAgentData?.getHighEntropyValues(['architecture','bitness','platformVersion','model','wow64','fullVersionList','uaFullVersion','formFactors'])}))()`;}
-function readFrameSource(fp){return `(async()=>{const value=await ${readWorkerSource()};value.screen=screen.width+' × '+screen.height;value.dpr=devicePixelRatio;value.screenMedia=matchMedia('(device-width: '+${fp.screen.width}+'px) and (device-height: '+${fp.screen.height}+'px)').matches;value.dprMedia=matchMedia('(resolution: '+${fp.devicePixelRatio}+'dppx)').matches;return value;})()`;}
+function readFrameSource(fp){return `(async()=>({...await ${readWorkerSource()},...${displaySource(fp,{frame:true})}}))()`;}
 function readSource(fp){
- const cfg=JSON.stringify({width:fp.screen.width,height:fp.screen.height,dpr:fp.devicePixelRatio});
- return `(async()=>{const cfg=${cfg};const read=()=>({ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,locale:new Intl.DateTimeFormat().resolvedOptions().locale,numberLocale:new Intl.NumberFormat().resolvedOptions().locale,tz:new Intl.DateTimeFormat().resolvedOptions().timeZone});const page=read();page.uaHints=await navigator.userAgentData?.getHighEntropyValues(['architecture','bitness','platformVersion','model','wow64','fullVersionList','uaFullVersion','formFactors']);page.screen=screen.width+' × '+screen.height;page.dpr=devicePixelRatio;page.screenMedia=matchMedia('(device-width: '+cfg.width+'px) and (device-height: '+cfg.height+'px)').matches;page.dprMedia=matchMedia('(resolution: '+devicePixelRatio+'dppx)').matches;try{const gl=document.createElement('canvas').getContext('webgl');const debug=gl?.getExtension('WEBGL_debug_renderer_info');page.gpu=debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):null;}catch{}let worker;try{worker=await new Promise(resolve=>{const blob=URL.createObjectURL(new Blob(['('+read.toString()+');'+${JSON.stringify(readWorkerSource()+'.then(value=>postMessage(value))')}],{type:'text/javascript'}));let child,timer;const finish=value=>{clearTimeout(timer);child?.terminate();URL.revokeObjectURL(blob);resolve(value);};try{child=new Worker(blob);child.onmessage=event=>finish(event.data);child.onerror=()=>finish({error:'当前页面无法运行检查 Worker'});timer=setTimeout(()=>finish({error:'Worker 检查超时'}),3000);}catch{finish({error:'当前页面的策略阻止 Worker 检查'});}});}catch(error){worker={error:error.message};}let webgpu;try{if(!navigator.gpu)webgpu={available:false};else{const adapter=await Promise.race([navigator.gpu.requestAdapter(),new Promise(resolve=>setTimeout(()=>resolve(null),1500))]);webgpu={available:!!adapter,info:adapter?{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description}:null};}}catch(error){webgpu={available:false,error:error.message};}return {page,worker,webgpu};})()`;
+ return `(async()=>{const read=()=>({ua:navigator.userAgent,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages),cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory,locale:new Intl.DateTimeFormat().resolvedOptions().locale,numberLocale:new Intl.NumberFormat().resolvedOptions().locale,tz:new Intl.DateTimeFormat().resolvedOptions().timeZone});const page=read();page.uaHints=await navigator.userAgentData?.getHighEntropyValues(['architecture','bitness','platformVersion','model','wow64','fullVersionList','uaFullVersion','formFactors']);Object.assign(page,${displaySource(fp)});try{const gl=document.createElement('canvas').getContext('webgl');const debug=gl?.getExtension('WEBGL_debug_renderer_info');page.gpu=debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):null;}catch{}let worker;try{worker=await new Promise(resolve=>{const blob=URL.createObjectURL(new Blob(['('+read.toString()+');'+${JSON.stringify(readWorkerSource()+'.then(value=>postMessage(value))')}],{type:'text/javascript'}));let child,timer;const finish=value=>{clearTimeout(timer);child?.terminate();URL.revokeObjectURL(blob);resolve(value);};try{child=new Worker(blob);child.onmessage=event=>finish(event.data);child.onerror=()=>finish({error:'当前页面无法运行检查 Worker'});timer=setTimeout(()=>finish({error:'Worker 检查超时'}),3000);}catch{finish({error:'当前页面的策略阻止 Worker 检查'});}});}catch(error){worker={error:error.message};}let webgpu;try{if(!navigator.gpu)webgpu={available:false};else{const adapter=await Promise.race([navigator.gpu.requestAdapter(),new Promise(resolve=>setTimeout(()=>resolve(null),1500))]);webgpu={available:!!adapter,info:adapter?{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description}:null};}}catch(error){webgpu={available:false,error:error.message};}return {page,worker,webgpu};})()`;
 }
 function report(fp,observed,{engine,url,zoom=1,targetErrors=[]}){
  const rows=[];const add=(context,label,expected,actual)=>rows.push({context,label,expected:expected??null,actual:actual??null,state:actual===undefined||actual===null?'unknown':JSON.stringify(expected)===JSON.stringify(actual)?'match':'different'});
  for(const [key,label,expected]of [['ua','User Agent',fp.userAgent],['platform','平台',fp.platform],['language','语言',fp.language],['languages','语言列表',fp.languages],['locale','默认日期语言',fp.language],['numberLocale','默认数字语言',fp.language],['cpu','处理器核心',fp.hardwareConcurrency],['memory','设备内存',fp.deviceMemory],['tz','时区',fp.timezone]])add('网页',label,expected,observed.page[key]);
- add('网页','屏幕尺寸',fp.screen.width+' × '+fp.screen.height,observed.page.screen);add('网页','像素比（含缩放）',Number((fp.devicePixelRatio*zoom).toFixed(4)),Number(observed.page.dpr.toFixed(4)));add('CSS','屏幕媒体查询',true,observed.page.screenMedia);add('CSS','像素比媒体查询',true,observed.page.dprMedia);
+ if(fp.displayMode==='native')for(const [label,actual]of [['屏幕尺寸',observed.page.screen],['像素比（含缩放）',observed.page.dpr]])rows.push({context:'网页',label,expected:null,actual:actual??null,state:actual===undefined||actual===null?'unknown':'native'});
+ else {add('网页','屏幕尺寸',fp.screen.width+' × '+fp.screen.height,observed.page.screen);add('网页','像素比（含缩放）',Number((fp.devicePixelRatio*zoom).toFixed(4)),Number(observed.page.dpr.toFixed(4)));}
+ add('CSS','屏幕媒体查询',true,observed.page.screenMedia);add('CSS','像素比媒体查询',true,observed.page.dprMedia);add('CSS','屏幕 @media 样式',true,observed.page.screenStyle);add('CSS','像素比 @media 样式',true,observed.page.dprStyle);
  if(fp.noise.webgl)add('网页','WebGL 标识',fp.webgl.renderer,observed.page.gpu);else rows.push({context:'网页',label:'WebGL 标识',expected:null,actual:observed.page.gpu,state:observed.page.gpu?'native':'unknown'});
  if(!observed.worker.error)for(const [key,label]of [['ua','User Agent'],['platform','平台'],['language','语言'],['languages','语言列表'],['locale','默认日期语言'],['numberLocale','默认数字语言'],['cpu','处理器核心'],['memory','设备内存'],['tz','时区']])add('Worker',label,observed.page[key],observed.worker[key]);
  const meta=require('./fingerprint-protocol').metadata(fp);
@@ -23,7 +38,7 @@ function report(fp,observed,{engine,url,zoom=1,targetErrors=[]}){
    if(item.error){contextUnknown++;continue;}
    for(const [key,label] of [['ua','User Agent'],['platform','平台'],['language','语言'],['languages','语言列表'],['locale','默认日期语言'],['numberLocale','默认数字语言'],['cpu','处理器核心'],['memory','设备内存'],['tz','时区']])add(context,label,observed.page[key],item.value[key]);
    addHints(context,item.value.uaHints);
-   if(item.type==='iframe'){add(context,'屏幕尺寸',observed.page.screen,item.value.screen);add(context,'像素比（含缩放）',observed.page.dpr,item.value.dpr);add(context,'CSS 屏幕媒体查询',true,item.value.screenMedia);add(context,'CSS 像素比媒体查询',true,item.value.dprMedia);}
+   if(item.type==='iframe'){add(context,'屏幕尺寸',observed.page.screen,item.value.screen);add(context,'像素比（含缩放）',observed.page.dpr,item.value.dpr);add(context,'CSS 屏幕媒体查询',true,item.value.screenMedia);add(context,'CSS 像素比媒体查询',true,item.value.dprMedia);add(context,'CSS 屏幕 @media 样式',true,item.value.screenStyle);add(context,'CSS 像素比 @media 样式',true,item.value.dprStyle);}
  }
  for(const type of ['shared_worker','service_worker'])if(!counts[type])contexts.push({context:type==='shared_worker'?'Shared Worker':'Service Worker',type,status:'not-running'});
  let address='';try{const clean=new URL(url);address=clean.origin+clean.pathname;}catch{}
@@ -53,11 +68,13 @@ async function auditElectron(wc){
  // An ad frame can keep webContents loading after the inspected document is ready.
  const state=await wc.debugger.sendCommand('Runtime.evaluate',{expression:'document.readyState',returnByValue:true,timeout:2000});
  if(state.result?.value!=='complete')throw new Error('页面仍在加载，请完成后再检查');
- const value=await wc.debugger.sendCommand('Runtime.evaluate',{expression:readSource(fp),returnByValue:true,awaitPromise:true,timeout:7000});
+ const displayFp=fp.displayMode==='native'?{...fp}:fp;
+ const value=await wc.debugger.sendCommand('Runtime.evaluate',{expression:readSource(displayFp),returnByValue:true,awaitPromise:true,timeout:7000});
  if(value.exceptionDetails||!value.result?.value)throw new Error('网页检查失败，请重新加载后重试');
  if(wc.isDestroyed()||wc.getURL()!==url)throw new Error('网页在检查期间跳转，请重新检查');
- value.result.value.contexts=await require('./electron-fingerprint').electronWorkerObservations(wc,readWorkerSource(),readFrameSource(fp));
- return report(fp,value.result.value,{engine:'内置 Chromium '+process.versions.chrome,url,zoom:wc.getZoomFactor(),targetErrors:wc.__starTargetErrors});
+ if(fp.displayMode==='native'&&value.result.value.page.displayScreen)displayFp.screen=value.result.value.page.displayScreen;
+ value.result.value.contexts=await require('./electron-fingerprint').electronWorkerObservations(wc,readWorkerSource(),readFrameSource(displayFp));
+ return report(displayFp,value.result.value,{engine:'内置 Chromium '+process.versions.chrome,url,zoom:wc.getZoomFactor(),targetErrors:wc.__starTargetErrors});
 }
 function cleanUrl(url){try{const clean=new URL(url);return clean.origin+clean.pathname;}catch{return '';}}
 async function chromeTargets(running){
@@ -65,12 +82,12 @@ async function chromeTargets(running){
  const {targetInfos}=await running.pipe.send('Target.getTargets');return targetInfos.filter(t=>t.type==='page'&&/^https?:/.test(t.url));
 }
 async function chromePages(running){return (await chromeTargets(running)).map(target=>({id:target.targetId,title:target.title||'未命名网页',url:cleanUrl(target.url)}));}
-async function chromeWorkerObservations(running,url,targetId){
+async function chromeWorkerObservations(running,url,targetId,displayFp=running.fingerprint){
  const origin=new URL(url).origin,all=[...(running.targetSessions?.values()||[])];
  function belongs(target){let id=target.targetInfo.parentId;for(let depth=0;id&&depth<30;depth++){if(id===targetId)return true;id=all.find(t=>t.targetInfo.targetId===id)?.targetInfo.parentId;}return false;}
  return Promise.all(all.filter(target=>target.active!==false&&(target.targetInfo.type==='iframe'?belongs(target):['shared_worker','service_worker'].includes(target.targetInfo.type)&&new URL(target.targetInfo.url).origin===origin)).map(async target=>{
   const item={type:target.targetInfo.type,url:target.targetInfo.url};
-  try{await target.ready;const info=await running.pipe.send('Target.getTargetInfo',{targetId:target.targetInfo.targetId});item.url=info.targetInfo.url;const response=await running.pipe.send('Runtime.evaluate',{expression:item.type==='iframe'?readFrameSource(running.fingerprint):readWorkerSource(),awaitPromise:true,returnByValue:true},target.sessionId);if(response.exceptionDetails||!response.result?.value)throw new Error('后台上下文读取失败');item.value=response.result.value;}catch(error){item.error=error.message;}return item;
+  try{await target.ready;const info=await running.pipe.send('Target.getTargetInfo',{targetId:target.targetInfo.targetId});item.url=info.targetInfo.url;const response=await running.pipe.send('Runtime.evaluate',{expression:item.type==='iframe'?readFrameSource(displayFp):readWorkerSource(),awaitPromise:true,returnByValue:true},target.sessionId);if(response.exceptionDetails||!response.result?.value)throw new Error('后台上下文读取失败');item.value=response.result.value;}catch(error){item.error=error.message;}return item;
  }));
 }
 async function auditChrome(running,targetId){
@@ -84,10 +101,11 @@ async function auditChrome(running,targetId){
  if(state.result?.value!=='complete')throw new Error('所选网页仍在加载，请完成后再检查');
  const result=await running.pipe.send('Runtime.evaluate',{expression:readSource(running.fingerprint),returnByValue:true,awaitPromise:true,timeout:7000},attached.sessionId);
  if(result.exceptionDetails||!result.result?.value)throw new Error('本机 Chrome 网页检查失败，请重新加载后重试');
- result.result.value.contexts=await chromeWorkerObservations(running,target.url,target.targetId);
+ const displayFp=running.fingerprint.displayMode==='native'?{...running.fingerprint,screen:result.result.value.page.displayScreen}:running.fingerprint;
+ result.result.value.contexts=await chromeWorkerObservations(running,target.url,target.targetId,displayFp);
  result.result.value.network=attached.networkObserver?.snapshot();
  const current=await running.pipe.send('Target.getTargetInfo',{targetId:target.targetId});
  if(current.targetInfo.url!==target.url)throw new Error('所选网页在检查期间跳转，请重新检查');
- return {...report(running.fingerprint,result.result.value,{engine:'本机 Chrome '+running.fingerprint.chromeVersion,url:target.url,zoom:result.result.value.page.dpr/running.fingerprint.devicePixelRatio,targetErrors:running.targetErrors||[]}),targetId:target.targetId,title:current.targetInfo.title||'未命名网页'};
+ return {...report(displayFp,result.result.value,{engine:'本机 Chrome '+running.fingerprint.chromeVersion,url:target.url,zoom:result.result.value.page.dpr/running.fingerprint.devicePixelRatio,targetErrors:running.targetErrors||[]}),targetId:target.targetId,title:current.targetInfo.title||'未命名网页'};
 }
-module.exports={readSource,readWorkerSource,readFrameSource,report,auditElectron,auditChrome,chromePages};
+module.exports={displayObservation,readSource,readWorkerSource,readFrameSource,report,auditElectron,auditChrome,chromePages};

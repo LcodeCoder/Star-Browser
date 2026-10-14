@@ -5,7 +5,7 @@
 | 分类 | 官方参考 | 本项目基线 | 待完善 |
 | --- | --- | --- | --- |
 | 环境隔离、稳定配置 | AdsPower、GoLogin | 独立 session/Chrome 数据目录、首脚本 JS/CDP、配置导入导出、带密码的加密数据备份与独立恢复 | 跨平台迁移、完整系统密钥数据 |
-| 指纹参数 | Multilogin、BitBrowser | JS 参数、CDP UA/Client Hints/语言/原生时区/屏幕与像素比；页面、iframe、Dedicated/Shared/Service Worker 首脚本配置和实际检查 | 内置 OOPIF 原生 DPR/CSS、独立 Chrome OOPIF 屏幕尺寸 CSS、WebGPU 等边界 |
+| 指纹参数 | Multilogin、BitBrowser | JS 参数、CDP UA/Client Hints/语言/原生时区；原生一致显示已验证页面与 OOPIF 的真实 DPR/CSS；页面、iframe、Dedicated/Shared/Service Worker 首脚本配置和实际检查 | 自定义模式的内置 OOPIF DPR/CSS、独立 Chrome OOPIF 屏幕尺寸 CSS、WebGPU 等边界 |
 | 高频工作台 | GoLogin、Dolphin Anty | 搜索/分组/标签/详情、原子批量、置顶、归档、完整命令定位与一万环境分页 | 持续测量启动、后台资源与筛选性能 |
 | 代理管理 | AdsPower、Octo Browser | HTTP/HTTPS/SOCKS5、鉴权网关、代理库/检测/分配/批量录入、真实协议和目标响应预检、取消与故障阻断 | 真实供应商与 IPv6 网络测试 |
 | Cookie/书签/历史 | AdsPower、Octo | Cookie 备份导入清空、书签、每环境历史、标签恢复、真实下载控制与权限提示、Cookie/网页存储备份恢复 | 跨设备 Chrome 登录及系统密钥边界 |
@@ -147,3 +147,9 @@ Canvas 默认仍为原生；启用稳定策略时，2D Canvas/OffscreenCanvas �
 ## 浏览器与工作台视觉完善 0.15.0
 
 白色、浅灰与中性深灰主题采用共享语义配色；浏览器标签、地址输入和当前环境分区清楚。新标签页常用网址在当前独立会话内导航，支持键盘操作；设置入口、草稿保护、取消和保存返回触发按钮。工作台和浏览器的浅深对比度、窄窗、菜单与滚动经过真实交互检查，具体结果见 release-0.15.0.md 与 browser-design-0.15.md。
+
+## 0.15.1 显示与环境表格
+
+新建环境默认原生一致显示，保留真实 screen/DPR/CSS；已有自定义参数兼容保留，编辑器允许切换和编辑备用参数。原生显示 9 项和独立 Chrome 7 项检查通过；独立 Chrome 报告仍因自定义屏幕尺寸 CSS 限制为 partial。网页诊断读取真实 @media 样式，CSP 阻止时显示未读取。物理多显示器切换、系统睡眠和任意自定义设备指标仍不在本机通过范围内。
+
+浏览环境表格的名称、网络 / 地区、最近打开和操作采用等宽列及统一留白，选择框单独保持窄列。窄窗按可用空间隐藏次要列，详情展开后可见列保持等宽。7 种窗口宽度、3 种详情布局与深色紧凑模式经过实际应用测量：内容列最多相差 0.016px，选择框、内容和操作区均无溢出。完整记录见 [版本说明](release-0.15.1.md)。

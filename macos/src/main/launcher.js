@@ -102,7 +102,7 @@ async function launchProfile(profile, paths, fingerprint, {onStage = () => {}} =
   }
   const version = chromeVersion(chrome);
   if (nativeKernel && version !== nativeKernel.version) throw new Error("原生内核版本与验收报告不一致，请重新验收");
-  const fp = generateFingerprint(profile.seed,{os:profile.os,country:profile.country,fingerprint:profile.fingerprint,chromeVersion:version,timezone:fingerprint?.timezone||profile.timezone,language:fingerprint?.language||profile.language});
+  const fp = generateFingerprint(profile.seed,{os:profile.os,country:profile.country,fingerprint:profile.fingerprint,nativeDisplay:fingerprint?.displayMode==='native'?{screen:fingerprint.screen,devicePixelRatio:fingerprint.devicePixelRatio}:undefined,chromeVersion:version,timezone:fingerprint?.timezone||profile.timezone,language:fingerprint?.language||profile.language});
   fp.webrtc = profile.webrtc || 'disable';
   fp.nativeHardware = !!nativeKernel;
   const startUrl=profile.startUrl==='about:home'?'chrome://newtab':profile.startUrl||'about:blank';
@@ -127,7 +127,7 @@ async function launchProfile(profile, paths, fingerprint, {onStage = () => {}} =
     `--lang=${fp.language}`,
     `--user-agent=${fp.userAgent}`,
     `--window-size=${fp.screen.width},${fp.screen.height - 100}`,
-    `--force-device-scale-factor=${fp.devicePixelRatio || 1}`,
+    ...(fp.displayMode==='native'?[]:[`--force-device-scale-factor=${fp.devicePixelRatio || 1}`]),
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-blink-features=AutomationControlled",
@@ -204,6 +204,7 @@ async function launchProfile(profile, paths, fingerprint, {onStage = () => {}} =
               await send('Page.enable');
               const frame=await send('Page.getFrameTree');networkObserver.setMainFrame(frame.frameTree.frame.id);
               await send('Network.enable');await applyProtocol(send,fp);
+              await require('./display-settings').captureDisplay(send,fp);
               await send('Page.addScriptToEvaluateOnNewDocument',{source:pageSource,runImmediately:true});
               await send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:require('./fingerprint-targets').FILTER});
             }finally{await send('Runtime.runIfWaitingForDebugger',{}).catch(()=>{});}

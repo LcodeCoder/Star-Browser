@@ -7,7 +7,7 @@
 | 项目 | 本轮实际环境 |
 | --- | --- |
 | 主机 | macOS 26.1（25B78），Apple Silicon / arm64 |
-| Star Browser 源码版本 | 0.14.0，工作区中的 JS/CDP 更新 |
+| Star Browser 源码版本 | 0.15.1，原生一致显示与真实 CSS 检查 |
 | 内置浏览器 | Electron 44.7.0 / Chromium 152.0.7977.130 |
 | 本机 Chrome | 155.0.8059.40 |
 | 驱动 | Playwright 1.64.0；严格上下文测试独立启动 Electron，通过显式 CDP 会话读取 |
@@ -23,7 +23,7 @@ JS/CDP 专项证据来自本机源码运行。发行包通过 `verify:artifacts`
 | Shared Worker | 经典与模块 Worker；首次脚本、请求头、跨标签共享实例和连接、关闭后重新打开保持配置。 |
 | Service Worker | 注册、激活、接管、fetch 与消息；停止后重新启动、模块重新注册以及完整应用重启后重新配置，保留原生生命周期。 |
 | UA Client Hints | 页面与各类 Worker 的低熵及高熵字段、toJSON、版本与平台声明；HTTP UA、Accept-Language 和已请求的 Client Hints 一起验证。 |
-| 屏幕与输入 | 顶层页面和同进程 frame 的屏幕、DPR 与 CSS 设备/分辨率查询；原生触摸和方向配置。跨系统或移动设备声明仍不等于完整设备模拟。 |
+| 屏幕与输入 | 原生一致模式在顶层、同源、OOPIF、srcdoc、嵌套及同步 about:blank 中保留真实 screen/DPR 与 CSS 查询；自定义模式的跨进程限制见下文。跨系统或移动设备声明仍不等于完整设备模拟。 |
 | 可选稳定策略 | 2D Canvas/OffscreenCanvas 按绝对像素位置分配确定性低位，重复读回、裁剪、导出/解码保持一致；AudioBuffer 直接读取与 copyFromChannel 一致，静音保持静音；几何 API 保留原生类型和接收者校验。 |
 | WebGL 与 WebRTC | 默认图形/音频保持原生；可选 WebGL 策略只改 vendor/renderer 声明。WebRTC 关闭时明确拒绝连接，包括 prototype.constructor 路径；保留时仍是原生连接、构造器身份、事件与 RTCStatsReport。 |
 | 生命周期与隔离 | 双环境并行、页面导航、标签销毁与重建、休眠/唤醒、DevTools 打开/关闭以及后台执行上下文重建均有回归。 |
@@ -35,11 +35,23 @@ JS getter 与方法使用原生函数作为 Proxy 目标，继续执行原生接
 
 内置浏览器用 browserContextId 区分环境，浏览器连接处理 Shared/Service Worker，页面连接处理 Dedicated/嵌套 Worker 与 iframe。Worker 启动暂停后配置，再恢复执行。严格测试不使用第二个浏览器级 autoattach，以免另一个调试客户端提前恢复 Worker，影响首次脚本验证。
 
+## 0.15.1 原生一致显示与真实 CSS 验证
+
+新建环境默认选择“原生一致”，已有屏幕尺寸或 DPR 的配置继续使用“自定义”。原生一致模式清除设备指标模拟，保留浏览器真实 screen getter、devicePixelRatio、matchMedia 与样式引擎；独立 Chrome 不添加 force-device-scale-factor。运行时读取当前浏览器显示信息，失败时不提交部分数据。自定义参数作为备用保留，切换模式后可以继续编辑使用。
+
+原生一致模式会使用真实显示器参数；它解决已测试上下文的显示一致性，不承诺任意自定义屏幕 / DPR 的伪装，也不改变语言、时区及环境隔离配置。物理多显示器切换与操作系统睡眠没有在这次本机验收中测试。
+
+`npm run test:display` 使用独立、没有项目预加载或指纹注入的 stock Electron 对照；站点隔离保持开启。9 项检查覆盖六类 frame 的首段脚本、screen 六项、原生 getter 语义、120 × 30 CSS px 布局，以及 19 种 resolution 查询的 matchMedia 与真实 @media 样式。页面缩放 1.25 / 复原、MQL change 事件、跨站导航、重载、DevTools 开闭、双环境隔离、标签休眠唤醒、环境关闭重开和完整应用重启均通过。
+
+独立原生对照在测量前后读取实际 workArea，避免把 macOS Dock 引起的原生可用高度变化误判成配置漂移；当前页面和各框架仍须匹配独立原生对照。测试不会通过伪造 DPR getter、替换 matchMedia 或关闭站点隔离使结果通过。
+
+网页诊断分别读取 JS 媒体查询和真实 CSS @media 的 computed style。原生显示值标为“原生信号”，没有自填期望值冒充匹配；frame 与当前顶层仍作一致性检查。CSP 阻止临时样式时标为“未读取”。测量元素和样式读完即移除。
+
 ## 明确保留的限制
 
-### 跨进程 iframe 的原生 DPR 与 CSS 设备模拟
+### 自定义模式：跨进程 iframe 的原生 DPR 与 CSS 设备模拟
 
-本轮严格测试配置屏幕 1600 × 900、DPR 1.5，观测如下：
+0.15.1 严格上下文回归继续使用自定义屏幕 1600 × 900、DPR 1.5，观测如下：
 
 | 读取位置 | DPR | CSS 设备尺寸与分辨率查询 |
 | --- | --- | --- |
@@ -52,7 +64,7 @@ JS getter 与方法使用原生函数作为 Proxy 目标，继续执行原生接
 
 ### 独立 Chrome 的原生缩放
 
-独立 Chrome 155 使用已有 `--force-device-scale-factor`。配置 1.5 / 1.25 后，顶层和真实 OOPIF 的 DPR、CSS resolution 一致，getter 保持原生；两个进程与完整关闭后重开通过四项检查。120 CSS px 的布局宽度保持不变。
+独立 Chrome 155 使用已有 `--force-device-scale-factor`。配置 1.5 / 1.25 后，顶层和真实 OOPIF 的 DPR、CSS resolution 一致，getter 保持原生；两个进程与完整关闭后重开通过原有四项检查。0.15.1 另增加原生一致显示的六类 frame、首段脚本、真实 CSS、getter、重载 / 重启与实际诊断三项检查，7 项检查通过，整份报告仍保留自定义屏幕限制为 partial。120 CSS px 的布局宽度保持不变。
 
 自定义屏幕尺寸的 OOPIF CSS 查询仍有差异：JS 屏幕尺寸符合 1600 × 900，原生设备尺寸查询未全部符合。`external-display.json` 的整体状态仍为 `partial`。这个改善只属于独立 Chrome，不代表内置 Electron 的 DPR 限制已经解决。
 
@@ -64,9 +76,9 @@ JS getter 与方法使用原生函数作为 Proxy 目标，继续执行原生接
 
 因此，本轮验证不宣称任意网站不可检测，也不使用历史 BrowserScan/BrowserLeaks 分数替代当前实现证据。
 
-## CreepJS 本地观测与原生 Worker 对照
+## 历史 CreepJS 本地观测与原生 Worker 对照
 
-使用固定 CreepJS 提交 `10aa6724cd33a1015db1574211890518cd04f0cc` 的未修改脚本，本地提供静态资源，并阻断外部网络。三组对比都完成；这是本地 API 信号观测，不是云信任分数或任意网站通行保证。
+以下 CreepJS 数值为 0.14.0 的自定义配置观测，没有作为 0.15.1 原生一致模式的检测评分。使用固定 CreepJS 提交 `10aa6724cd33a1015db1574211890518cd04f0cc` 的未修改脚本，本地提供静态资源，并阻断外部网络。三组对比都完成；这是本地 API 信号观测，不是云信任分数或任意网站通行保证。
 
 | 配置 | 本轮观测 lies | 说明 |
 | --- | --- | --- |
@@ -91,6 +103,8 @@ JS getter 与方法使用原生函数作为 Proxy 目标，继续执行原生接
 ```sh
 npm test
 npm run test:fingerprint
+npm run test:display
+npm run test:external-display
 npm run test:browser-settings
 npm run test:tabs
 npm run test:permissions
@@ -102,17 +116,18 @@ CreepJS 复现：`npm run test:creepjs:local -- /absolute/path/to/creepjs`（需
 
 | 测试组 | 本轮结果 | 证据 |
 | --- | --- | --- |
-| 单元回归（包含代理与原生模式） | 93 项通过 | `npm test` 输出 |
+| 单元回归（包含显示模式与诊断状态） | 102 项通过 | `npm test` 输出 |
 | 工作台与本机 Chrome 指纹回归 | 17 项通过 | `test-results/fingerprint.json` |
 | 严格上下文、首次脚本、原生对照与生命周期 | 14 项通过，1 项部分通过 | `test-results/fingerprint-contexts.json`，包含逐项实际读值与 `limitations` |
-| 独立 Chrome 原生缩放 | 4 项通过，整体部分 | `test-results/external-display.json` |
-| CreepJS 本地观测 | 3 组观测完成，仍有差异 | `test-results/creepjs-local.json` |
+| 原生一致显示、真实 CSS 与生命周期 | 9 项通过 | `test-results/display-consistency.json` |
+| 独立 Chrome 自定义缩放与原生一致显示 | 7 项通过，整体部分 | `test-results/external-display.json` |
+| 历史 CreepJS 本地观测（0.14.0） | 3 组观测完成，仍有差异 | `test-results/creepjs-local.json` |
 | 原生内存请求头 | 5 项通过 | `test-results/hardware-headers.json` |
 | 浏览器设置 | 12 项通过 | `test-results/browser-settings.json` |
 | 标签与休眠恢复 | 8 项通过 | `test-results/tabs.json` |
 | 权限隔离 | 3 项通过 | `test-results/permissions.json` |
 
-工作台报告区分匹配、差异、原生信号、未读取与未运行；后台协议错误影响成功判定。UI 构建与 Git diff 空白检查已通过；当前 52 个运行时 JavaScript 文件通过语法检查；原始安装包及提取证据已从工作区清理，溯源脚本明确报告 `source-unavailable`，不再宣称原始文件证据仍存在。新增测试脚本另行通过语法检查。
+工作台报告区分匹配、差异、原生信号、未读取与未运行；后台协议错误影响成功判定。UI 构建与 Git diff 空白检查已通过；当前 53 个运行时 JavaScript 文件通过语法检查；原始安装包及提取证据已从工作区清理，溯源脚本明确报告 `source-unavailable`，不再宣称原始文件证据仍存在。新增测试脚本另行通过语法检查。
 
 ## 官方接口依据
 

@@ -212,7 +212,7 @@ module.exports=function createFingerprintRuntime(scope){
     defAligned(navProto,'vendor',function(){return 'Google Inc.';},scope.navigator,'Google Inc.');
     defAligned(navProto,'maxTouchPoints',function(){return CFG.maxTouchPoints||0;},scope.navigator,CFG.maxTouchPoints||0);
     // Language/UA are set natively where supported. Do not add legacy IE properties.
-    if(scope.Screen)['width','height','availWidth','availHeight','colorDepth','pixelDepth'].forEach(function(key){defAligned(scope.Screen.prototype,key,function(){return CFG.screen[key];},scope.screen,CFG.screen[key]);});
+    if(CFG.displayMode!=='native'&&scope.Screen)['width','height','availWidth','availHeight','colorDepth','pixelDepth'].forEach(function(key){defAligned(scope.Screen.prototype,key,function(native){return CFG.displayMode==='native'?native:CFG.screen[key];},scope.screen,CFG.screen[key]);});
     installPart('webgl',CFG.noise.webgl,function(){[scope.WebGLRenderingContext,scope.WebGL2RenderingContext].forEach(function(Type){if(!Type)return;wrap(Type.prototype,'getParameter',function(target,receiver,args){
       var native=Reflect.apply(target,receiver,args);
       if(!CFG.noise.webgl||!receiver.getExtension('WEBGL_debug_renderer_info'))return native;

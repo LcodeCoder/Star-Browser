@@ -17,6 +17,10 @@ function metadata(fp,host={platform:process.platform,arch:process.arch,systemVer
  return {brands:[{brand:'Chromium',version:major},{brand:'Google Chrome',version:major},{brand:'Not-A.Brand',version:'99'}],fullVersionList:[{brand:'Chromium',version},{brand:'Google Chrome',version},{brand:'Not-A.Brand',version:'99.0.0.0'}],fullVersion:version,platform,platformVersion,architecture,model:fp.os==='android'?'SM-S918B':'',mobile:fp.os==='android',bitness:hints?.bitness||'64',wow64:hints?.wow64||false,formFactors:[fp.os==='android'?'Mobile':'Desktop']};
 }
 async function applyDeviceMetrics(send,fp){
+ if(fp.displayMode==='native'){
+  await send('Emulation.clearDeviceMetricsOverride',{});
+  return;
+ }
  await send('Emulation.setDeviceMetricsOverride',{width:0,height:0,deviceScaleFactor:fp.devicePixelRatio||1,mobile:fp.os==='android',screenWidth:fp.screen.width,screenHeight:fp.screen.height,screenOrientation:{type:fp.screen.width>=fp.screen.height?'landscapePrimary':'portraitPrimary',angle:fp.screen.width>=fp.screen.height?0:90},dontSetVisibleSize:true});
 }
 async function applyProtocol(send,fp,{metrics=true,worker=false}={}) {

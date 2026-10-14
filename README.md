@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/LcodeCoder/Star-Browser/releases">版本与下载</a> ·
   <a href="macos/docs/capabilities.md">功能与范围</a> ·
-  <a href="macos/docs/release-0.15.0.md">版本说明</a> ·
+  <a href="macos/docs/release-0.15.1.md">版本说明</a> ·
   <a href="macos/docs/verification.md">验证记录</a>
 </p>
 
@@ -17,20 +17,20 @@ Star Browser 是面向日常多环境工作的桌面浏览器，支持 **Windows
 
 ## 下载
 
-当前源码版本：**0.15.0**。本轮安装包已在本地构建，尚未上传到 GitHub Release；发布后可从下列版本页面下载。
+当前源码版本：**0.15.1**。本轮安装包已在本地构建，尚未上传到 GitHub Release；发布后可从下列版本页面下载。
 
 | 平台 | 架构 | 安装包 |
 | --- | --- | --- |
 | Windows | x64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:win` |
 | macOS | Apple Silicon / arm64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:mac` |
 
-macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本版本的构建、资源匹配与打包运行结果见 [0.15.0 版本说明](macos/docs/release-0.15.0.md)。
+macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本版本的构建、资源匹配与打包运行结果见 [0.15.1 版本说明](macos/docs/release-0.15.1.md)。
 
 ## 功能
 
 - **独立浏览环境**：独立会话和数据目录，支持配置导入导出、分组、标签、搜索、置顶、归档与批量操作；批量标签可保留、追加、替换或清空。
 - **代理管理**：支持 HTTP、HTTPS、SOCKS5 和鉴权代理，提供代理库、批量录入、检测、进度显示及取消操作。
-- **指纹配置与检查**：管理语言、时区、屏幕、UA / Client Hints 和手动 WebGL 配置，覆盖页面及 Dedicated / Shared / Service Worker，提供实际差异报告与 BrowserScan / BrowserLeaks 检测入口。
+- **指纹配置与检查**：管理语言、时区、原生一致 / 自定义显示、UA / Client Hints 和手动 WebGL 配置，覆盖页面及 Dedicated / Shared / Service Worker，提供实际差异报告与 BrowserScan / BrowserLeaks 检测入口。
 - **浏览器日常操作**：多标签、固定、静音、休眠与恢复，以及书签、独立历史、下载管理、站点权限和当前标签 DevTools。
 - **本地工作流**：加密环境备份与恢复、扩展管理、窗口同步、本地任务编排、任务导入导出和带密钥的本地 API；结果保存失败时保留真实结果并支持重试。
 - **浅色与深色界面**：工作台和浏览器共享主题，浅色界面采用白色与浅灰，深色界面采用中性灰，网页画布保留正常背景，采用紧凑标签栏、宽地址栏与简洁新标签页，支持键盘操作与窄窗口布局，未保存的工作台编辑也会在系统关窗和退出时受到保护。
@@ -43,7 +43,9 @@ macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证�
 
 ![Star Browser 新标签页](macos/docs/images/browser-0.15.0-light.png)
 
-![Star Browser 工作台](macos/docs/images/workbench-0.15.0-light.png)
+![Star Browser 0.15.1 等宽环境表格](macos/docs/images/workbench-0.15.1-light.png)
+
+![Star Browser 0.15.1 深色紧凑工作台](macos/docs/images/workbench-0.15.1-dark.png)
 
 ## 本地运行
 
@@ -70,7 +72,7 @@ npm start
 
 Intel Mac 与 Windows ARM64 提供构建入口，兼容性需要在对应设备上验证。macOS 打包需在 macOS 上执行。
 
-构建后运行 `npm run verify:artifacts`，核对四个发行文件的完整性、实际程序架构、版本和全部运行资源，生成 `SHA256SUMS-0.15.0.txt`。只构建一个平台时，使用 `-- --platform mac` 或 `-- --platform win`；其他架构可再指定 `--arch x64` 或 `--arch arm64`。
+构建后运行 `npm run verify:artifacts`，核对四个发行文件的完整性、实际程序架构、版本和全部运行资源，生成 `SHA256SUMS-0.15.1.txt`。只构建一个平台时，使用 `-- --platform mac` 或 `-- --platform win`；其他架构可再指定 `--arch x64` 或 `--arch arm64`。
 
 ## 验证
 
@@ -80,6 +82,8 @@ npm run test:workbench-browser
 npm run test:experience
 npm run test:browser-newtab
 npm run test:diagnostics
+npm run test:display
+npm run test:external-display
 npm run test:cookie-workspace
 npm run test:proxy-workspace
 npm run test:batch-profiles
@@ -91,13 +95,13 @@ npm run test:e2e
 
 ## 能力边界
 
-指纹处理使用 JavaScript 和 CDP，覆盖页面、iframe 与各类 Worker 的可配置读值，默认保留原生图形与音频信号。内置 Electron 的跨进程 iframe 原生像素比/CSS 仍有已验证限制；独立 Chrome 已对齐原生像素比与 CSS 分辨率，自定义屏幕尺寸 CSS 仍有差异，具体覆盖与证据见 [JS/CDP 验证记录](macos/docs/js-cdp-verification.md)。此工程尚不提供内核级反检测保证、远程团队服务、云浏览器或代理购买服务；远程检测网站的结果只代表特定机器、配置及当次观测，不作为所有网站的检测保证。
+指纹处理使用 JavaScript 和 CDP，覆盖页面、iframe 与各类 Worker 的可配置读值，默认保留原生图形与音频信号。新环境默认采用原生一致显示模式，保留真实屏幕和像素比，页面与跨进程 iframe 的 DPR、真实 CSS、缩放及生命周期已经验证。自定义模式下，内置 Electron 的跨进程 iframe 原生像素比/CSS 仍有已验证限制；独立 Chrome 已对齐原生像素比与 CSS 分辨率，自定义屏幕尺寸 CSS 仍有差异，具体覆盖与证据见 [JS/CDP 验证记录](macos/docs/js-cdp-verification.md)。此工程尚不提供内核级反检测保证、远程团队服务、云浏览器或代理购买服务；远程检测网站的结果只代表特定机器、配置及当次观测，不作为所有网站的检测保证。
 
 原生 CPU/RAM/内存请求头及屏幕策略的小范围 Chromium 补丁、版本锁和验收工具见 [原生内核准备](kernel/README.md)。当前没有通过运行验收的定制内核二进制，内核 P0 尚未完成。
 
 ## 项目文档
 
-- [0.15.0 版本说明](macos/docs/release-0.15.0.md)
+- [0.15.1 版本说明](macos/docs/release-0.15.1.md)
 - [功能与实际范围](macos/docs/capabilities.md)
 - [验证记录](macos/docs/verification.md)
 - [浏览器与工作台设计](macos/docs/browser-design-0.15.md)
