@@ -15,6 +15,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: macos
@@ -30,23 +31,41 @@ jobs:
       - run: npm test
       - run: npm run verify:source
       - run: npm run test:profile-editor
+        timeout-minutes: 5
       - run: npm run test:display
+        timeout-minutes: 5
       - run: npm run test:workspace-editors
+        timeout-minutes: 5
       - run: npm run test:environment-workspace
+        timeout-minutes: 5
       - run: npm run test:launch-experience
+        timeout-minutes: 5
       - run: npm run test:browser-bookmarks
+        timeout-minutes: 5
       - run: npm run test:browser-settings
+        timeout-minutes: 5
       - run: npm run test:browser-newtab
+        timeout-minutes: 5
       - run: npm run test:tabs
+        timeout-minutes: 5
       - run: npm run test:cookie-workspace
+        timeout-minutes: 5
       - run: npm run test:proxy-workspace
+        timeout-minutes: 5
       - run: npm run test:batch-profiles
+        timeout-minutes: 5
       - run: npm run test:editor-close
+        timeout-minutes: 5
       - run: npm run test:workbench-browser
+        timeout-minutes: 5
       - run: npm run test:experience
+        timeout-minutes: 5
       - run: npm run test:diagnostics
+        timeout-minutes: 5
       - run: npm run test:tasks
+        timeout-minutes: 5
       - run: npm run test:task-transfer
+        timeout-minutes: 5
       - name: Build macOS arm64 installer
         if: runner.os == 'macOS'
         run: npm run build:mac

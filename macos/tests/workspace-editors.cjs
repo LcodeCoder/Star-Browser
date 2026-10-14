@@ -137,5 +137,10 @@ async function restore(channel,release=false) {
   });
   await check('编辑过程没有未捕获页面错误',async()=>assert.deepEqual(errors,[]));
  } catch(error) {console.error(error);process.exitCode=1;if(manager)await manager.screenshot({animations:'disabled',path:path.join(output,'failure.png')}).catch(()=>{});}
- finally {if(app)await app.close().catch(()=>{});fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({status:process.exitCode?'failed':'passed',testedAt:new Date().toISOString(),results,errors},null,2)+'\n');fs.rmSync(data,{recursive:true,force:true});}
+ finally {
+  // Save failures before cleanup: a deliberately dirty editor can reject app.close().
+  fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({status:process.exitCode?'failed':'passed',testedAt:new Date().toISOString(),results,errors},null,2)+'\n');
+  if(app){await app.evaluate(({BrowserWindow})=>{for(const window of BrowserWindow.getAllWindows())window.destroy();}).catch(()=>{});await app.close().catch(()=>{});}
+  fs.rmSync(data,{recursive:true,force:true,maxRetries:6,retryDelay:200});
+ }
 })();

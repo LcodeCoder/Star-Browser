@@ -1,8 +1,8 @@
 {
   "name": "star-browser",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "private": true,
-  "description": "Star Browser \u00b7 \u72ec\u7acb\u6d4f\u89c8\u73af\u5883\u4e0e\u9ad8\u9891\u5de5\u4f5c\u53f0",
+  "description": "Star Browser · 独立浏览环境与高频工作台",
   "main": "src/main/main.js",
   "author": "Star Browser",
   "license": "MIT",

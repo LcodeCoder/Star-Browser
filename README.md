@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/LcodeCoder/Star-Browser/releases">版本与下载</a> ·
   <a href="macos/docs/capabilities.md">功能与范围</a> ·
-  <a href="macos/docs/release-0.15.1.md">版本说明</a> ·
+  <a href="macos/docs/release-0.15.2.md">版本说明</a> ·
   <a href="macos/docs/verification.md">验证记录</a>
 </p>
 
@@ -17,14 +17,14 @@ Star Browser 是面向日常多环境工作的桌面浏览器，支持 **Windows
 
 ## 下载
 
-当前源码版本：**0.15.1**。本轮安装包已在本地构建，尚未上传到 GitHub Release；发布后可从下列版本页面下载。
+当前源码版本：**0.15.2**。本轮 Windows x64 和 macOS arm64 安装包已在本地构建并通过完整性与源码匹配校验，尚未上传到 GitHub Release；发布后可从下列版本页面下载。
 
 | 平台 | 架构 | 安装包 |
 | --- | --- | --- |
 | Windows | x64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:win` |
 | macOS | Apple Silicon / arm64 | [Release 页面](https://github.com/LcodeCoder/Star-Browser/releases)；本地构建：`npm run build:mac` |
 
-macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本版本的构建、资源匹配与打包运行结果见 [0.15.1 版本说明](macos/docs/release-0.15.1.md)。
+macOS 安装包采用 ad hoc 签名，尚未进行 Developer ID 签名与公证；Windows 安装包未签名。本版本的构建、资源匹配与打包运行结果见 [0.15.2 版本说明](macos/docs/release-0.15.2.md)。
 
 ## 功能
 
@@ -101,7 +101,7 @@ npm run test:e2e
 
 ## 项目文档
 
-- [0.15.1 版本说明](macos/docs/release-0.15.1.md)
+- [0.15.2 版本说明](macos/docs/release-0.15.2.md)
 - [功能与实际范围](macos/docs/capabilities.md)
 - [验证记录](macos/docs/verification.md)
 - [浏览器与工作台设计](macos/docs/browser-design-0.15.md)
