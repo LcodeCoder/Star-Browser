@@ -39,18 +39,30 @@ class ProfileBackups{
     const activeNow=new Set([...this.runtime().map(row=>row.id),...this.starting()]);
     if(unique.some(id=>activeNow.has(id)))throw new Error('请先停止所选环境，再保存备份');
     for(const id of unique){if(!this.store.get(id))throw new Error('部分环境已不存在，请刷新列表');lockProfile(id,'backup','这个环境正在备份，请完成后再操作');locked.push(id);}
-    this.store.flush();const profiles=unique.map(id=>structuredClone(this.store.get(id))),cookies={},histories={},files=[];
+    this.store.flush();const profiles=unique.map(id=>structuredClone(this.store.get(id)));
     for(const profile of profiles){
      const ses=this.session.fromPartition('persist:tfb-env-'+profile.id);ses.flushStorageData();await ses.cookies.flushStore();
-     cookies[profile.id]=await ses.cookies.get({});histories[profile.id]=structuredClone(this.store.history(profile.id));
-     if(ses.storagePath)files.push(...await collectFiles(ses.storagePath,'profiles/'+profile.id+'/electron',{exclude:name=>excluded.has(name)||['Cookies','Cookies-journal'].includes(name)}));
-     files.push(...await collectFiles(path.join(this.app.getPath('userData'),'profiles',profile.id,'user-data'),'profiles/'+profile.id+'/chrome',{exclude:name=>excluded.has(name)}));
     }
-    const extensionIds=[...new Set(profiles.flatMap(p=>p.extensions||[]))],extensions=[];
-    for(const id of extensionIds){const record=this.extensions.list().find(e=>e.id===id);if(!record)throw new Error('部分扩展已缺失，请先修复环境设置');const directory=this.extensions.directory(id);extensions.push({...structuredClone(record),contentHash:await directoryHash(directory)});files.push(...await collectFiles(directory,'extensions/'+id));}
-    const manifest={kind:'star-environments',version:1,appVersion:this.app.getVersion(),platform:process.platform,createdAt:Date.now(),profiles,cookies,histories,extensions};
-    this.progress({phase:'encrypting'});const result=await writeArchive(destination,password,manifest,files,value=>this.progress(value));
-    this.store.activity('保存加密备份',`${profiles.length} 个环境`);return {ok:true,...result,count:profiles.length};
+    // Pending session writes can finish after a browser window is closed.
+    // Recollect on a detected change, keeping profile locks for all three attempts.
+    for(let attempt=0;attempt<3;attempt++){
+     const cookies={},histories={},files=[],extensions=[];
+     this.progress({phase:'collecting',completed:0,total:0,files:0});
+     for(const profile of profiles){
+      const ses=this.session.fromPartition('persist:tfb-env-'+profile.id);
+      cookies[profile.id]=await ses.cookies.get({});histories[profile.id]=structuredClone(this.store.history(profile.id));
+      if(ses.storagePath)files.push(...await collectFiles(ses.storagePath,'profiles/'+profile.id+'/electron',{exclude:name=>excluded.has(name)||['Cookies','Cookies-journal'].includes(name)}));
+      files.push(...await collectFiles(path.join(this.app.getPath('userData'),'profiles',profile.id,'user-data'),'profiles/'+profile.id+'/chrome',{exclude:name=>excluded.has(name)}));
+     }
+     const extensionIds=[...new Set(profiles.flatMap(p=>p.extensions||[]))];
+     for(const id of extensionIds){const record=this.extensions.list().find(e=>e.id===id);if(!record)throw new Error('部分扩展已缺失，请先修复环境设置');const directory=this.extensions.directory(id);extensions.push({...structuredClone(record),contentHash:await directoryHash(directory)});files.push(...await collectFiles(directory,'extensions/'+id));}
+     const manifest={kind:'star-environments',version:1,appVersion:this.app.getVersion(),platform:process.platform,createdAt:Date.now(),profiles,cookies,histories,extensions};
+     this.progress({phase:'encrypting'});
+     try{
+      const result=await writeArchive(destination,password,manifest,files,value=>this.progress(value));
+      this.store.activity('保存加密备份',`${profiles.length} 个环境`);return {ok:true,...result,count:profiles.length};
+     }catch(error){if(error.code!=='STAR_BACKUP_SOURCE_CHANGED'||attempt===2)throw error;}
+    }
    }finally{for(const id of locked)unlockProfile(id,'backup');}
   });
  }

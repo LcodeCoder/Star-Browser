@@ -46,6 +46,9 @@ async function collectFiles(root, prefix, {exclude = () => false} = {}) {
   await visit();
   return files;
 }
+function sourceChanged(file) {
+  return Object.assign(new Error('环境文件已变更，请重新备份'),{code:'STAR_BACKUP_SOURCE_CHANGED',entry:file.path});
+}
 function entryHeader(relative, size) {
   safeRelative(relative);
   const metadata = Buffer.from(JSON.stringify({path:relative,size}));
@@ -66,14 +69,16 @@ async function writeArchive(destination, password, manifest, files, onProgress =
   async function* records() {
     yield* entryHeader('manifest.json',serialized.length);yield serialized;
     for(const file of files) {
-      const handle = await fsp.open(file.source,fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+      let handle;
+      try { handle = await fsp.open(file.source,fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0)); }
+      catch(error) { if(error.code === 'ENOENT') throw sourceChanged(file);throw error; }
       try {
         const stat = await handle.stat();
-        if(!stat.isFile() || stat.size !== file.size) throw new Error('环境文件已变更，请重新备份');
+        if(!stat.isFile() || stat.size !== file.size) throw sourceChanged(file);
         yield* entryHeader(file.path,file.size);
         let read = 0;
         for await(const chunk of handle.createReadStream({autoClose:false})) { read += chunk.length;yield chunk; }
-        if(read !== file.size) throw new Error('环境文件已变更，请重新备份');
+        if(read !== file.size) throw sourceChanged(file);
       } finally { await handle.close(); }
       completed += file.size;onProgress({completed,total,files:files.length});
     }
