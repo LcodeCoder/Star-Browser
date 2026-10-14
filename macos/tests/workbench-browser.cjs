@@ -3,10 +3,27 @@ const {_electron}=require('playwright'),assert=require('node:assert/strict'),fs=
 const {startOrigin}=require('./fixtures.cjs');
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-workbench-')),results=[],errors=[];let app,manager,browser,origin,slow;
 const out=path.resolve('test-results/star-0.12.0');fs.mkdirSync(out,{recursive:true});
+const timeline=path.join(out,'workbench-browser-lifecycle.jsonl');fs.writeFileSync(timeline,'');
+function record(event,detail={}){fs.appendFileSync(timeline,JSON.stringify({at:new Date().toISOString(),source:'test',event,...detail})+'\n');}
+async function diagnostics(){
+ const child=app.process();child.on('exit',(code,signal)=>record('process-exit',{code,signal}));app.on('close',()=>record('connection-closed'));
+ await app.evaluate(({app,crashReporter,webContents},{timeline,dumps})=>{
+  const fs=process.getBuiltinModule('fs');fs.mkdirSync(dumps,{recursive:true});app.setPath('crashDumps',dumps);crashReporter.start({uploadToServer:false});
+  const record=(event,detail={})=>fs.appendFileSync(timeline,JSON.stringify({at:new Date().toISOString(),source:'main',event,...detail})+'\n');
+  process.on('exit',code=>record('process-exit',{code}));process.on('uncaughtExceptionMonitor',error=>record('uncaught-exception',{error:error.stack}));
+  app.on('child-process-gone',(_event,details)=>record('child-process-gone',details));app.on('quit',(_event,code)=>record('app-quit',{code}));
+  const observe=wc=>{const id=wc.id;record('web-contents-created',{id,type:wc.getType()});
+   wc.on('render-process-gone',(_event,details)=>record('render-process-gone',{id,...details}));wc.once('destroyed',()=>record('web-contents-destroyed',{id}));
+   wc.on('devtools-opened',()=>record('devtools-opened',{id}));wc.prependListener('devtools-closed',()=>record('devtools-closed',{id}));
+   wc.debugger.on('detach',(_event,reason)=>record('debugger-detached',{id,reason}));
+  };webContents.getAllWebContents().forEach(observe);app.on('web-contents-created',(_event,wc)=>observe(wc));
+ },{timeline,dumps:path.join(out,'crash-dumps')});
+}
 async function until(run,timeout=15000){const end=Date.now()+timeout;while(Date.now()<end){if(await run())return;await new Promise(r=>setTimeout(r,80));}throw new Error('验证等待超时');}
 async function api(method,...args){return manager.evaluate(({method,args})=>window.api[method](...args),{method,args});}
-async function check(name,run){const detail=await run();results.push({name,status:'passed',detail});console.log('PASS',name);}
+async function check(name,run){record('check-start',{name});const detail=await run();results.push({name,status:'passed',detail});record('check-passed',{name});console.log('PASS',name);}
 async function closeGuestDevTools(id){
+ record('close-devtools-request',{id});
  await app.evaluate(async({webContents},id)=>{
   const wc=webContents.fromId(id);if(!wc.isDevToolsOpened())return;
   await new Promise((resolve,reject)=>{
@@ -16,11 +33,12 @@ async function closeGuestDevTools(id){
   });
  },id);
  await until(()=>app.evaluate(({webContents},id)=>{const wc=webContents.fromId(id);return !wc.isDevToolsOpened()&&wc.__tfbFpInjected&&wc.debugger.isAttached();},id));
+ record('close-devtools-complete',{id});
 }
 
 (async()=>{try{
  origin=await startOrigin();slow=http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/html'});res.write('<title>加载中的网页</title><h1>网络请求进行中</h1>');const timer=setTimeout(()=>res.end('完成'),8000);res.once('close',()=>clearTimeout(timer));});await new Promise(r=>slow.listen(0,'127.0.0.1',r));
- app=await _electron.launch({args:['.'],cwd:process.cwd(),env:{...process.env,TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:dir}});manager=await app.firstWindow();manager.on('pageerror',e=>errors.push(e.message));await manager.locator('#btnNew').waitFor();
+ app=await _electron.launch({args:['.'],cwd:process.cwd(),env:{...process.env,TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:dir}});manager=await app.firstWindow();await diagnostics();manager.on('pageerror',e=>errors.push(e.message));await manager.locator('#btnNew').waitFor();
  const p=await api('create',{name:'Studio · 主工作环境',os:process.platform==='win32'?'win':'mac',country:'JP',timezone:'Asia/Tokyo',timezoneManual:true,language:'ja-JP',langManual:true,startUrl:origin.url+'/probe',tags:['日常'],note:'用于工作台与浏览器交互验证'});await api('create',{name:'Studio · 内容协作',country:'US',tags:['内容']});
  await check('搜索、相邻详情与返回保留上下文和焦点',async()=>{await manager.locator('#search').fill('Studio');await manager.locator('.profile-name').first().click();await manager.locator('#drawer').waitFor();const title=await manager.locator('#drawer h2').innerText();await manager.getByRole('button',{name:'下一个环境',exact:true}).click();assert.notEqual(await manager.locator('#drawer h2').innerText(),title);await manager.locator('#drawerClose').click();assert.equal(await manager.locator('#search').inputValue(),'Studio');await until(()=>manager.evaluate(()=>document.activeElement.classList.contains('profile-name')));await manager.locator('#search').fill('不存在的环境');await manager.getByText('没有找到匹配的环境',{exact:true}).waitFor();await manager.screenshot({path:path.join(out,'empty.png')});await manager.locator('#search').fill('');});
  await check('侧栏收起与命令搜索定位',async()=>{await manager.getByRole('button',{name:'收起侧栏',exact:true}).click();assert.ok(await manager.locator('.sidebar-collapsed').count());await manager.keyboard.press(process.platform==='darwin'?'Meta+k':'Control+k');await manager.locator('[cmdk-input]').fill('内容协作');await manager.keyboard.press('ArrowDown');await manager.keyboard.press('Enter');await manager.locator('#drawer').waitFor();await manager.locator('#drawerClose').click();await manager.getByRole('button',{name:'展开侧栏',exact:true}).click();});
@@ -35,6 +53,6 @@ async function closeGuestDevTools(id){
  await check('离线状态与恢复保留本地工作上下文',async()=>{await manager.context().setOffline(true);await manager.locator('.network-banner').waitFor();await manager.locator('#navEnv').click();assert.ok(await manager.locator('.profile-name').count());await manager.screenshot({path:path.join(out,'workbench-offline.png')});await manager.context().setOffline(false);await manager.locator('.network-banner').waitFor({state:'hidden'});});
  await check('手动 WebGL 配置在编辑器保存、重开后保留',async()=>{await manager.locator('.profile-name').first().click();await manager.getByRole('button',{name:'编辑环境',exact:true}).click();await manager.locator('details.advanced-settings summary,details.advanced summary').count().then(async count=>{if(count)await manager.locator('details.advanced-settings summary,details.advanced summary').click();else await manager.getByText('指纹、硬件与网站权限',{exact:false}).click();});await manager.getByLabel('WebGL 标识策略',{exact:true}).selectOption('stable');await manager.getByLabel('WebGL 厂商',{exact:false}).fill('QA vendor');await manager.getByLabel('WebGL 渲染器',{exact:true}).fill('QA renderer');await manager.getByRole('button',{name:'保存更改',exact:true}).click();await manager.getByRole('dialog').waitFor({state:'hidden'});const saved=(await api('list')).find(row=>row.fingerprint?.webgl?.vendor==='QA vendor');assert.equal(saved.fingerprint.webgl.renderer,'QA renderer');});
  await check('页面无未处理脚本错误',async()=>assert.deepEqual(errors,[]));
- }catch(error){console.error(error);process.exitCode=1;results.push({name:'工作台与浏览器验证',status:'failed',error:error.stack});if(browser&&!browser.isClosed())await browser.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});}
- finally{if(app)await app.close().catch(()=>{});if(origin)await origin.close();if(slow){slow.closeAllConnections();await new Promise(r=>slow.close(r));}fs.writeFileSync(path.join(out,'workbench-browser.json'),JSON.stringify({status:process.exitCode?'failed':'passed',testedAt:new Date().toISOString(),results},null,2));fs.rmSync(dir,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
+ }catch(error){record('check-failed',{error:error.stack});console.error(error);process.exitCode=1;results.push({name:'工作台与浏览器验证',status:'failed',error:error.stack});if(browser&&!browser.isClosed())await browser.screenshot({path:path.join(out,'failure.png')}).catch(()=>{});}
+ finally{record('cleanup-start');if(app)await app.close().catch(()=>{});if(origin)await origin.close();if(slow){slow.closeAllConnections();await new Promise(r=>slow.close(r));}fs.writeFileSync(path.join(out,'workbench-browser.json'),JSON.stringify({status:process.exitCode?'failed':'passed',testedAt:new Date().toISOString(),results},null,2));fs.rmSync(dir,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
 })();
