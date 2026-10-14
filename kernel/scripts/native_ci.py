@@ -110,18 +110,10 @@ class Pipeline:
                                          '-property', 'installationPath'], capture=True).strip()
             if not installation:
                 raise RuntimeError('Visual Studio C++ toolchain is unavailable')
-            command = Path(installation) / 'Common7/Tools/VsDevCmd.bat'
-            # Fixed compiler setup command on the disposable host; captured
-            # environment is consumed privately and is never printed or saved.
-            block = self.execute(['cmd.exe', '/d', '/s', '/c',
-                                  '""' + str(command) + '" -arch=amd64 -host_arch=amd64 && set"'], capture=True)
-            for line in block.splitlines():
-                if '=' in line and not line.startswith('='):
-                    key, value = line.split('=', 1)
-                    self.environment[key.upper()] = value
-            self.environment['DEPOT_TOOLS_WIN_TOOLCHAIN'] = '0'
-            self.environment['DEPOT_TOOLS_UPDATE'] = '0'
-            self.environment['PATH'] = str(self.depot) + os.pathsep + self.environment.get('PATH', '')
+            # Chromium's official setup_toolchain.py activates vcvarsall for
+            # each native toolchain. Use its supported installation override
+            # instead of importing a shell's entire environment through cmd.
+            self.environment['VSINSTALLDIR'] = installation + os.sep
             self.environment['vs2026_install'] = installation
             self.report['visualStudio'] = installation
             sdk_root = Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Windows Kits/10'
