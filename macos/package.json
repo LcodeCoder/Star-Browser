@@ -33,6 +33,7 @@
     "build:win": "npm run build:ui && electron-builder --win --x64 --publish never",
     "build:win:arm64": "npm run build:ui && electron-builder --win --arm64 --publish never",
     "test:workbench-browser": "node tests/workbench-browser.cjs",
+    "test:environment-workspace": "node tests/environment-workspace.cjs",
     "test:experience": "node tests/experience-quality.cjs",
     "test:profile-editor": "node tests/profile-editor.cjs",
     "test:hardware-headers": "node tests/hardware-headers.cjs",

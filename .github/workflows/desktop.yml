@@ -32,6 +32,7 @@ jobs:
       - run: npm run test:profile-editor
       - run: npm run test:display
       - run: npm run test:workspace-editors
+      - run: npm run test:environment-workspace
       - run: npm run test:launch-experience
       - run: npm run test:browser-bookmarks
       - run: npm run test:browser-settings
