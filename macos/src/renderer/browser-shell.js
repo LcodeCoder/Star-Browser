@@ -818,6 +818,7 @@ async function refreshBookmarks() {
   }
   renderBookmarkBar();
   updateStarState();
+  if (!$("ntp").hidden) await renderNtp();
 }
 
 // ---- 书签栏（常驻地址栏下方） ----
