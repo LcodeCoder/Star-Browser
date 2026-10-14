@@ -24,8 +24,10 @@ async function evaluate(connection, sessionId, expression) {
 async function api(method, ...args) { return evaluate(app, manager, 'window.api[' + JSON.stringify(method) + '](...' + JSON.stringify(args) + ')'); }
 async function launch(args, directory, managed) {
   fs.rmSync(path.join(directory, 'DevToolsActivePort'), {force:true});
-  const state = {stderr: '', child: spawn(require('electron'), args, {cwd: root,
-    env: {...process.env, ELECTRON_RUN_AS_NODE: '', ...(managed ? {TFB_TEST_MODE: '1', TFB_USER_DATA_DIR: directory, TFB_TEST_ORIGIN_PORT: String(origin.port)} : {})},
+  const env = {...process.env, ...(managed ? {TFB_TEST_MODE: '1', TFB_USER_DATA_DIR: directory, TFB_TEST_ORIGIN_PORT: String(origin.port)} : {})};
+  // The Windows launcher treats an empty RUN_AS_NODE entry as Node mode. Remove it.
+  delete env.ELECTRON_RUN_AS_NODE;
+  const state = {stderr: '', child: spawn(require('electron'), args, {cwd: root, env,
     stdio: ['ignore', 'ignore', 'pipe']})};
   state.child.stderr.on('data', chunk => { state.stderr = (state.stderr + chunk).slice(-6000); });
   try {

@@ -11,7 +11,8 @@ async function until(run,timeout=12000){const end=Date.now()+timeout;while(Date.
 async function evaluate(expression,sessionId=manager){const response=await pipe.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,timeout:15000},sessionId,18000);if(response.exceptionDetails)throw new Error(response.exceptionDetails.exception?.description||response.exceptionDetails.text);return response.result?.value;}
 async function api(method,...args){return evaluate('window.api['+JSON.stringify(method)+'](...'+JSON.stringify(args)+')');}
 async function start(){
- stderr='';child=spawn(require('electron'),['.'],{cwd:root,env:{...process.env,ELECTRON_RUN_AS_NODE:'',TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:dir,TFB_TEST_ORIGIN_PORT:String(origin.port)},stdio:['ignore','ignore','pipe']});
+ const env={...process.env,TFB_TEST_MODE:'1',TFB_USER_DATA_DIR:dir,TFB_TEST_ORIGIN_PORT:String(origin.port)};delete env.ELECTRON_RUN_AS_NODE;
+ stderr='';child=spawn(require('electron'),['.'],{cwd:root,env,stdio:['ignore','ignore','pipe']});
  child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-8000);});
  let endpoint=await until(async()=>{try{const lines=fs.readFileSync(path.join(dir,'DevToolsActivePort'),'utf8').split('\n');const response=await fetch('http://127.0.0.1:'+lines[0]+'/json/version');const json=await response.json();return json.webSocketDebuggerUrl?.replace('localhost','127.0.0.1');}catch{return null;}});
  pipe=new CdpSocket(endpoint);await pipe.ready;

@@ -8,7 +8,8 @@ async function nativeWorkerControl(origin,fp){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'star-native-worker-control-'));let child,pipe,stderr='';
  try{
   const main=path.join(dir,'main.cjs');fs.writeFileSync(main,`const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(dir)});app.commandLine.appendSwitch('remote-debugging-port','0');let window;app.whenReady().then(()=>{window=new BrowserWindow({show:false,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});window.loadURL('about:blank');});app.on('window-all-closed',()=>app.quit());`);
-  child=spawn(require('electron'),[main],{env:{...process.env,ELECTRON_RUN_AS_NODE:''},stdio:['ignore','ignore','pipe']});child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-3000);});
+  const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
+  child=spawn(require('electron'),[main],{env,stdio:['ignore','ignore','pipe']});child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-3000);});
   const endpoint=await until(()=>{try{const lines=fs.readFileSync(path.join(dir,'DevToolsActivePort'),'utf8').split('\n');return 'ws://127.0.0.1:'+lines[0]+lines[1];}catch{return null;}});pipe=new CdpSocket(endpoint);await pipe.ready;
   const jobs=new Map(),errors=[],targets=[];
   pipe.on('message',message=>{if(message.method==='Target.attachedToTarget'){
