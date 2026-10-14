@@ -71,6 +71,106 @@
       "path": "ui/display/screen_infos.h",
       "sha256": "44899eadd71e011112ec6cfdc6acd12e55717b55ed76d061b1f139835aa4f16b",
       "size": 1422
+    },
+    {
+      "path": "third_party/blink/renderer/core/frame/web_frame_widget_impl.cc",
+      "sha256": "5178b1e9f03a664216446a5c74f14a773a9940dbf006fe5398fb829879998c17",
+      "size": 234338
+    },
+    {
+      "path": "third_party/blink/renderer/core/frame/web_frame_widget_impl.h",
+      "sha256": "b499765457b144561cc0b8d64d94b3914023fc80f17145778508bb77ca293745",
+      "size": 68426
+    },
+    {
+      "path": "third_party/blink/renderer/core/frame/web_remote_frame_impl.cc",
+      "sha256": "ebbf5a42fb8fad34b0825c373a0bb209ff0221f0c2ee95f269b9c2fbdfac77a6",
+      "size": 19926
+    },
+    {
+      "path": "third_party/blink/public/common/frame/frame_visual_properties.h",
+      "sha256": "aa74a9969706161e8b0c24633e3e42a93ff799ccd235a6be81af9293a41ae0bb",
+      "size": 3133
+    },
+    {
+      "path": "third_party/blink/public/common/widget/visual_properties.h",
+      "sha256": "0512eb29cb82c05aa35768d0c875887e38d3624649c2c83a75901481510dbb4b",
+      "size": 7988
+    },
+    {
+      "path": "third_party/blink/public/mojom/frame/frame_visual_properties.mojom",
+      "sha256": "6120519609d609a829efffd3229ec555807376dfb03ec71e94f6f89261fdbc4f",
+      "size": 3514
+    },
+    {
+      "path": "third_party/blink/public/mojom/widget/visual_properties.mojom",
+      "sha256": "ac7ca3b933a7b35219147640b178e4779441f6d7f84339bb8f3222983e23d5b3",
+      "size": 5602
+    },
+    {
+      "path": "third_party/blink/public/common/frame/frame_visual_properties_mojom_traits.h",
+      "sha256": "7a80024115fbd155f999d3bdbd7ba2d55c11b78b59c618aca16803402b2c8b9e",
+      "size": 3218
+    },
+    {
+      "path": "third_party/blink/public/common/widget/visual_properties_mojom_traits.h",
+      "sha256": "7774df226ce91af9f2cce8a1feadc215e8dfbada737d90ef750f99c0e837686f",
+      "size": 4383
+    },
+    {
+      "path": "third_party/blink/common/frame/frame_visual_properties_mojom_traits.cc",
+      "sha256": "2114a11131c98b80f2a66ffb25e38eaf8a3f62abc4c81c1bf3b98db69de2e34a",
+      "size": 1862
+    },
+    {
+      "path": "third_party/blink/common/widget/visual_properties_mojom_traits.cc",
+      "sha256": "23ca26ba3da93c748c6c28283825ceefc7d8cf2917cc748875db5282b00c1246",
+      "size": 2533
+    },
+    {
+      "path": "third_party/blink/common/widget/visual_properties.cc",
+      "sha256": "9e121dc54b0fe7f95ee77bdf1fc838a95426ffb4eb80a818ebe90e74d034c681",
+      "size": 2193
+    },
+    {
+      "path": "third_party/blink/renderer/core/frame/remote_frame.h",
+      "sha256": "da9cebaf7dd3f179311e330f23a146b63ae944aa841c21b25f0c10ff0865debd",
+      "size": 14551
+    },
+    {
+      "path": "third_party/blink/renderer/core/frame/remote_frame.cc",
+      "sha256": "874d12217b448d393902c35aa39013cde5bd2ac0608e06050bbc5c171031cede",
+      "size": 48314
+    },
+    {
+      "path": "third_party/blink/renderer/platform/widget/frame_widget.h",
+      "sha256": "5a39ecf1abcef109ad48d37dd48389db1ecda1f86f910c2a647df9df54ff5e2c",
+      "size": 16660
+    },
+    {
+      "path": "third_party/blink/renderer/core/frame/local_frame.cc",
+      "sha256": "f314885f156e923a88eed7087b00c99aa0f55d13787aebb15398fc88fa5a9d7f",
+      "size": 180028
+    },
+    {
+      "path": "third_party/blink/renderer/core/page/chrome_client_impl.cc",
+      "sha256": "dadba3147698c005dd3a40345589cb6d9b64ff73c21a1b719c23fe96cc834eee",
+      "size": 60397
+    },
+    {
+      "path": "content/browser/renderer_host/cross_process_frame_connector.cc",
+      "sha256": "1c885ea810782a6f9b42f0834667f83b79d0505f276da67e0ee697f4bea31333",
+      "size": 27254
+    },
+    {
+      "path": "content/browser/renderer_host/render_widget_host_impl.h",
+      "sha256": "1990a900152758a41a720a4dc22a059dc45848d1bdf473f7e488b62434d5bf22",
+      "size": 75594
+    },
+    {
+      "path": "content/browser/renderer_host/render_widget_host_impl.cc",
+      "sha256": "e5a9d75766d0a642283c6caf413534c5fee0f692140441a88f0e68733b77f51d",
+      "size": 169245
     }
   ],
   "overlays": [
@@ -113,6 +213,10 @@
     {
       "path": "patches/0002-native-display-policy.patch",
       "sha256": "bee98bed7928f696ed5d2c793a9f8d762a80cd0f896c72e75397a62ed29e6fd5"
+    },
+    {
+      "path": "patches/0003-oopif-effective-screen.patch",
+      "sha256": "55881bfe5c06c439145e7b43b594e7b9cdbcdee872afd19a0b2097ec55be780d"
     }
   ],
   "preparedDisplayScope": [
@@ -121,5 +225,13 @@
     "screenColorDepth",
     "screenOrientation"
   ],
-  "displayRuntimeAccepted": false
+  "displayRuntimeAccepted": false,
+  "oopifPropagationRuntimeAccepted": false,
+  "preparedOopifScope": [
+    "separateWebScreenPropagation",
+    "nestedFrameInitialization",
+    "nativeScreenCssMetrics",
+    "nativeDevicePixelRatio",
+    "dynamicChangeAndClear"
+  ]
 }

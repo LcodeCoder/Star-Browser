@@ -103,9 +103,13 @@ def verify_patch_bundle():
             providers = list(pool.map(fetch, LOCK['upstreamFiles']))
         apply(source, verify_revision=False)
         result = native_policy_test(source)
+        from oopif_check import verify as verify_oopif
+        compiler = os.environ.get('CXX') or shutil.which('clang++') or shutil.which('g++')
+        oopif_result = verify_oopif(source, compiler)
         return {'status': 'patch-preparation-verified', 'version': LOCK['version'],
                 'sourceCommit': LOCK['commit'], 'upstreamFiles': len(LOCK['upstreamFiles']),
                 'overlays': len(LOCK['overlays']), 'policyTest': result,
+                'oopifSourceTest': oopif_result,
                 'sourceProviders': {provider: providers.count(provider) for provider in sorted(set(providers))},
                 'compiledChromium': False, 'p0Complete': False}
 
@@ -288,7 +292,7 @@ def preflight(source, arch):
             blockers.append('Full Xcode with an active developer directory is required; Command Line Tools alone were found')
     elif sys.platform == 'win32':
         if not os.environ.get('VSINSTALLDIR'):
-            blockers.append('Run in a Visual Studio 2022 developer shell with the Windows SDK')
+            blockers.append('Run in a supported Visual Studio C++ developer shell with the pinned Windows SDK')
     else:
         blockers.append('This initial build entry targets native Windows/macOS hosts')
     current_arch = 'arm64' if platform.machine().lower() in ['arm64', 'aarch64'] else 'x64'

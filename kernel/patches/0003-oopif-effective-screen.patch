@@ -1,0 +1,449 @@
+diff --git a/content/browser/renderer_host/cross_process_frame_connector.cc b/content/browser/renderer_host/cross_process_frame_connector.cc
+index 4911f71..6c2d65d 100644
+--- a/content/browser/renderer_host/cross_process_frame_connector.cc
++++ b/content/browser/renderer_host/cross_process_frame_connector.cc
+@@ -227,7 +227,8 @@ void CrossProcessFrameConnector::SynchronizeVisualProperties(
+       visual_properties.is_pinch_gesture_active,
+       visual_properties.visible_viewport_size,
+       visual_properties.compositor_viewport,
+-      visual_properties.root_widget_viewport_segments);
++      visual_properties.root_widget_viewport_segments,
++      visual_properties.emulated_screen_infos);
+ 
+   render_widget_host->UpdateVisualProperties(propagate);
+ }
+diff --git a/content/browser/renderer_host/render_widget_host_impl.cc b/content/browser/renderer_host/render_widget_host_impl.cc
+index 043cc52..84e9e78 100644
+--- a/content/browser/renderer_host/render_widget_host_impl.cc
++++ b/content/browser/renderer_host/render_widget_host_impl.cc
+@@ -1085,6 +1085,8 @@ blink::VisualProperties RenderWidgetHostImpl::GetVisualProperties() {
+ 
+   blink::VisualProperties visual_properties;
+   visual_properties.screen_infos = GetScreenInfos();
++  visual_properties.emulated_screen_infos =
++      properties_from_parent_local_root_.emulated_screen_infos;
+   auto& current_screen_info = visual_properties.screen_infos.mutable_current();
+ 
+   // If hardware acceleration is disabled then do not report the display as
+@@ -2602,7 +2604,10 @@ void RenderWidgetHostImpl::SetVisualPropertiesFromParentFrame(
+     bool is_pinch_gesture_active,
+     const gfx::Size& visible_viewport_size,
+     const gfx::Rect& compositor_viewport,
+-    std::vector<gfx::Rect> root_widget_viewport_segments) {
++    std::vector<gfx::Rect> root_widget_viewport_segments,
++    const std::optional<display::ScreenInfos>& emulated_screen_infos) {
++  properties_from_parent_local_root_.emulated_screen_infos =
++      emulated_screen_infos;
+   properties_from_parent_local_root_.page_scale_factor = page_scale_factor;
+   properties_from_parent_local_root_.compositing_scale_factor =
+       compositing_scale_factor;
+@@ -3312,6 +3317,8 @@ bool RenderWidgetHostImpl::StoredVisualPropertiesNeedsUpdate(
+   return zoom_changed || size_changed || parent_local_surface_id_changed ||
+          old_visual_properties->screen_infos !=
+              new_visual_properties.screen_infos ||
++         old_visual_properties->emulated_screen_infos !=
++             new_visual_properties.emulated_screen_infos ||
+          old_visual_properties->compositor_viewport_pixel_rect !=
+              new_visual_properties.compositor_viewport_pixel_rect ||
+          old_visual_properties->is_fullscreen_granted !=
+diff --git a/content/browser/renderer_host/render_widget_host_impl.h b/content/browser/renderer_host/render_widget_host_impl.h
+index f6d6eb3..875d7cc 100644
+--- a/content/browser/renderer_host/render_widget_host_impl.h
++++ b/content/browser/renderer_host/render_widget_host_impl.h
+@@ -781,7 +781,9 @@ class CONTENT_EXPORT RenderWidgetHostImpl
+       bool is_pinch_gesture_active,
+       const gfx::Size& visible_viewport_size,
+       const gfx::Rect& compositor_viewport,
+-      std::vector<gfx::Rect> root_widget_viewport_segments);
++      std::vector<gfx::Rect> root_widget_viewport_segments,
++      const std::optional<display::ScreenInfos>& emulated_screen_infos =
++          std::nullopt);
+ 
+   // Indicates if the render widget host should track the render widget's size
+   // as opposed to visa versa.
+@@ -1452,6 +1454,9 @@ class CONTENT_EXPORT RenderWidgetHostImpl
+     MainFramePropagationProperties();
+     ~MainFramePropagationProperties();
+ 
++    // Web-visible emulation, kept separate from physical screen/input state.
++    std::optional<display::ScreenInfos> emulated_screen_infos;
++
+     // The page-scale factor of the main-frame.
+     float page_scale_factor = 1.f;
+ 
+diff --git a/third_party/blink/common/frame/frame_visual_properties_mojom_traits.cc b/third_party/blink/common/frame/frame_visual_properties_mojom_traits.cc
+index a8bd250..3f88e05 100644
+--- a/third_party/blink/common/frame/frame_visual_properties_mojom_traits.cc
++++ b/third_party/blink/common/frame/frame_visual_properties_mojom_traits.cc
+@@ -15,6 +15,7 @@ bool StructTraits<blink::mojom::FrameVisualPropertiesDataView,
+     Read(blink::mojom::FrameVisualPropertiesDataView data,
+          blink::FrameVisualProperties* out) {
+   if (!data.ReadScreenInfos(&out->screen_infos) ||
++      !data.ReadEmulatedScreenInfos(&out->emulated_screen_infos) ||
+       !data.ReadMinSizeForAutoResize(&out->min_size_for_auto_resize) ||
+       !data.ReadMaxSizeForAutoResize(&out->max_size_for_auto_resize) ||
+       !data.ReadVisibleViewportSize(&out->visible_viewport_size) ||
+diff --git a/third_party/blink/common/widget/visual_properties.cc b/third_party/blink/common/widget/visual_properties.cc
+index f6b2653..f0f69b3 100644
+--- a/third_party/blink/common/widget/visual_properties.cc
++++ b/third_party/blink/common/widget/visual_properties.cc
+@@ -16,6 +16,7 @@ VisualProperties& VisualProperties::operator=(const VisualProperties& other) =
+ 
+ bool VisualProperties::operator==(const VisualProperties& other) const {
+   return screen_infos == other.screen_infos &&
++         emulated_screen_infos == other.emulated_screen_infos &&
+          auto_resize_enabled == other.auto_resize_enabled &&
+          min_size_for_auto_resize == other.min_size_for_auto_resize &&
+          max_size_for_auto_resize == other.max_size_for_auto_resize &&
+diff --git a/third_party/blink/common/widget/visual_properties_mojom_traits.cc b/third_party/blink/common/widget/visual_properties_mojom_traits.cc
+index fa9595d..52b74e7 100644
+--- a/third_party/blink/common/widget/visual_properties_mojom_traits.cc
++++ b/third_party/blink/common/widget/visual_properties_mojom_traits.cc
+@@ -16,6 +16,7 @@ bool StructTraits<
+     blink::VisualProperties>::Read(blink::mojom::VisualPropertiesDataView data,
+                                    blink::VisualProperties* out) {
+   if (!data.ReadScreenInfos(&out->screen_infos) ||
++      !data.ReadEmulatedScreenInfos(&out->emulated_screen_infos) ||
+       !data.ReadMinSizeForAutoResize(&out->min_size_for_auto_resize) ||
+       !data.ReadMaxSizeForAutoResize(&out->max_size_for_auto_resize) ||
+       !data.ReadNewSizeDevicePx(&out->new_size_device_px) ||
+diff --git a/third_party/blink/public/common/frame/frame_visual_properties.h b/third_party/blink/public/common/frame/frame_visual_properties.h
+index f958c30..0befd72 100644
+--- a/third_party/blink/public/common/frame/frame_visual_properties.h
++++ b/third_party/blink/public/common/frame/frame_visual_properties.h
+@@ -5,6 +5,8 @@
+ #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_FRAME_FRAME_VISUAL_PROPERTIES_H_
+ #define THIRD_PARTY_BLINK_PUBLIC_COMMON_FRAME_FRAME_VISUAL_PROPERTIES_H_
+ 
++#include <optional>
++
+ #include "components/viz/common/surfaces/local_surface_id.h"
+ #include "third_party/blink/public/common/common_export.h"
+ #include "ui/display/screen_infos.h"
+@@ -45,6 +47,11 @@ struct BLINK_COMMON_EXPORT FrameVisualProperties {
+   // another renderer process. That RenderWidgetHost would then be responsible
+   // for passing it along to the child RenderWidget.
+   display::ScreenInfos screen_infos;
++
++  // Web-visible emulated screen metrics inherited from the parent local root.
++  // Keep screen_infos physical: compositor sizing and input use its real DSF.
++  std::optional<display::ScreenInfos> emulated_screen_infos;
++
+   bool auto_resize_enabled = false;
+   bool is_pinch_gesture_active = false;
+   double zoom_level = 0;
+diff --git a/third_party/blink/public/common/frame/frame_visual_properties_mojom_traits.h b/third_party/blink/public/common/frame/frame_visual_properties_mojom_traits.h
+index de995f8..139245a 100644
+--- a/third_party/blink/public/common/frame/frame_visual_properties_mojom_traits.h
++++ b/third_party/blink/public/common/frame/frame_visual_properties_mojom_traits.h
+@@ -23,6 +23,11 @@ struct BLINK_COMMON_EXPORT
+     return r.screen_infos;
+   }
+ 
++  static const std::optional<display::ScreenInfos>& emulated_screen_infos(
++      const blink::FrameVisualProperties& r) {
++    return r.emulated_screen_infos;
++  }
++
+   static bool auto_resize_enabled(const blink::FrameVisualProperties& r) {
+     return r.auto_resize_enabled;
+   }
+diff --git a/third_party/blink/public/common/widget/visual_properties.h b/third_party/blink/public/common/widget/visual_properties.h
+index 5ed7a08..f0c7abe 100644
+--- a/third_party/blink/public/common/widget/visual_properties.h
++++ b/third_party/blink/public/common/widget/visual_properties.h
+@@ -56,6 +56,11 @@ struct BLINK_COMMON_EXPORT VisualProperties {
+   // Info about all screens, including the one currently showing the widget.
+   display::ScreenInfos screen_infos;
+ 
++  // Web-visible emulated screen metrics inherited from the parent local root.
++  // Keep screen_infos physical: compositor sizing and input use its real DSF.
++  std::optional<display::ScreenInfos> emulated_screen_infos;
++
++
+   // Whether or not blink should be in auto-resize mode.
+   bool auto_resize_enabled = false;
+ 
+diff --git a/third_party/blink/public/common/widget/visual_properties_mojom_traits.h b/third_party/blink/public/common/widget/visual_properties_mojom_traits.h
+index f6511be..2894f01 100644
+--- a/third_party/blink/public/common/widget/visual_properties_mojom_traits.h
++++ b/third_party/blink/public/common/widget/visual_properties_mojom_traits.h
+@@ -23,6 +23,11 @@ struct BLINK_COMMON_EXPORT StructTraits<blink::mojom::VisualPropertiesDataView,
+     return r.screen_infos;
+   }
+ 
++  static const std::optional<display::ScreenInfos>& emulated_screen_infos(
++      const blink::VisualProperties& r) {
++    return r.emulated_screen_infos;
++  }
++
+   static bool auto_resize_enabled(const blink::VisualProperties& r) {
+     return r.auto_resize_enabled;
+   }
+diff --git a/third_party/blink/public/mojom/frame/frame_visual_properties.mojom b/third_party/blink/public/mojom/frame/frame_visual_properties.mojom
+index a9ef1c2..691ae5e 100644
+--- a/third_party/blink/public/mojom/frame/frame_visual_properties.mojom
++++ b/third_party/blink/public/mojom/frame/frame_visual_properties.mojom
+@@ -14,6 +14,9 @@ struct FrameVisualProperties {
+   // Information about the screens (dpi, depth, etc..).
+   display.mojom.ScreenInfos screen_infos;
+ 
++  // Web metrics only; never substitute these for physical compositor metrics.
++  display.mojom.ScreenInfos? emulated_screen_infos;
++
+   // Whether or not blink should be in auto-resize mode.
+   bool auto_resize_enabled;
+ 
+diff --git a/third_party/blink/public/mojom/widget/visual_properties.mojom b/third_party/blink/public/mojom/widget/visual_properties.mojom
+index 687ecf9..4e4139d 100644
+--- a/third_party/blink/public/mojom/widget/visual_properties.mojom
++++ b/third_party/blink/public/mojom/widget/visual_properties.mojom
+@@ -17,6 +17,9 @@ struct VisualProperties {
+   // Info about all screens, including the one currently showing the widget.
+   display.mojom.ScreenInfos screen_infos;
+ 
++  // Web metrics only; never substitute these for physical compositor metrics.
++  display.mojom.ScreenInfos? emulated_screen_infos;
++
+   // Whether or not blink should be in auto-resize mode.
+   bool auto_resize_enabled = false;
+ 
+diff --git a/third_party/blink/renderer/core/frame/local_frame.cc b/third_party/blink/renderer/core/frame/local_frame.cc
+index 3960cc4..0cf88bb 100644
+--- a/third_party/blink/renderer/core/frame/local_frame.cc
++++ b/third_party/blink/renderer/core/frame/local_frame.cc
+@@ -1952,6 +1952,12 @@ double LocalFrame::DevicePixelRatio() const {
+ 
+   double ratio = page_->InspectorDeviceScaleFactorOverride();
+   ratio *= LayoutZoomFactor();
++  // MediaValues also uses this native DPR. In an OOPIF the layout/compositor
++  // keeps the physical scale; only the web-visible DPR inherits emulation.
++  if (auto* widget = const_cast<LocalFrame*>(this)->GetWidgetForLocalRoot()) {
++    ratio *= widget->GetWebExposedScreenInfos().current().device_scale_factor /
++             widget->GetScreenInfo().device_scale_factor;
++  }
+   return ratio;
+ }
+ 
+diff --git a/third_party/blink/renderer/core/frame/remote_frame.cc b/third_party/blink/renderer/core/frame/remote_frame.cc
+index 514e6c2..66ffe83 100644
+--- a/third_party/blink/renderer/core/frame/remote_frame.cc
++++ b/third_party/blink/renderer/core/frame/remote_frame.cc
+@@ -987,6 +987,8 @@ bool RemoteFrame::SynchronizeVisualProperties(
+           pending_visual_properties_.rect_in_local_root.size() ||
+       sent_visual_properties_->screen_infos !=
+           pending_visual_properties_.screen_infos ||
++      sent_visual_properties_->emulated_screen_infos !=
++          pending_visual_properties_.emulated_screen_infos ||
+       sent_visual_properties_->zoom_level !=
+           pending_visual_properties_.zoom_level ||
+       sent_visual_properties_->css_zoom_factor !=
+@@ -1082,8 +1084,10 @@ void RemoteFrame::UpdateCompositedLayerBounds() {
+ }
+ 
+ void RemoteFrame::DidChangeScreenInfos(
+-    const display::ScreenInfos& screen_infos) {
++    const display::ScreenInfos& screen_infos,
++    const std::optional<display::ScreenInfos>& emulated_screen_infos) {
+   pending_visual_properties_.screen_infos = screen_infos;
++  pending_visual_properties_.emulated_screen_infos = emulated_screen_infos;
+   SynchronizeVisualProperties();
+ }
+ 
+diff --git a/third_party/blink/renderer/core/frame/remote_frame.h b/third_party/blink/renderer/core/frame/remote_frame.h
+index 0b36f5f..80606ef 100644
+--- a/third_party/blink/renderer/core/frame/remote_frame.h
++++ b/third_party/blink/renderer/core/frame/remote_frame.h
+@@ -141,7 +141,10 @@ class CORE_EXPORT RemoteFrame final : public Frame,
+   void UpdateCompositedLayerBounds();
+ 
+   // Called when the local root's screen infos change.
+-  void DidChangeScreenInfos(const display::ScreenInfos& screen_info);
++  void DidChangeScreenInfos(
++      const display::ScreenInfos& screen_infos,
++      const std::optional<display::ScreenInfos>& emulated_screen_infos =
++          std::nullopt);
+   // Called when the main frame's zoom level is changed and should be propagated
+   // to the remote's associated view.
+   void ZoomFactorChanged(double zoom_factor);
+diff --git a/third_party/blink/renderer/core/frame/web_frame_widget_impl.cc b/third_party/blink/renderer/core/frame/web_frame_widget_impl.cc
+index f3cea49..378618c 100644
+--- a/third_party/blink/renderer/core/frame/web_frame_widget_impl.cc
++++ b/third_party/blink/renderer/core/frame/web_frame_widget_impl.cc
+@@ -2006,6 +2006,9 @@ void WebFrameWidgetImpl::UpdateVisualProperties(
+     }
+   }
+ 
++  // Set this before sizing: the screen-update callback publishes native
++  // Screen/CSS state and cascades the same emulation to nested local roots.
++  inherited_emulated_screen_infos_ = visual_properties.emulated_screen_infos;
+   gfx::Size old_visible_viewport_size = widget_base_->VisibleViewportSize();
+   ApplyVisualPropertiesSizing(visual_properties);
+ 
+@@ -3740,6 +3743,19 @@ const display::ScreenInfos& WebFrameWidgetImpl::GetScreenInfos() {
+   return widget_base_->screen_infos();
+ }
+ 
++const display::ScreenInfos& WebFrameWidgetImpl::GetWebExposedScreenInfos() {
++  return inherited_emulated_screen_infos_ ? *inherited_emulated_screen_infos_
++                                          : GetScreenInfos();
++}
++
++std::optional<display::ScreenInfos> WebFrameWidgetImpl::GetEmulatedScreenInfos() {
++  const auto& web_screen_infos = GetWebExposedScreenInfos();
++  if (web_screen_infos != GetOriginalScreenInfos()) {
++    return web_screen_infos;
++  }
++  return std::nullopt;
++}
++
+ const display::ScreenInfo& WebFrameWidgetImpl::GetOriginalScreenInfo() {
+   if (device_emulator_ && !widget_base_->WillBeDestroyed()) {
+     return device_emulator_->GetOriginalScreenInfo();
+@@ -5536,16 +5552,20 @@ void WebFrameWidgetImpl::DidUpdateSurfaceAndScreen(
+     View()->CancelPagePopup();
+   }
+ 
++  const display::ScreenInfos web_screen_infos = GetWebExposedScreenInfos();
++  const display::ScreenInfos previous_web_screen_infos =
++      last_web_exposed_screen_infos_.value_or(previous_original_screen_infos);
++  last_web_exposed_screen_infos_ = web_screen_infos;
++  const bool web_screen_changed = previous_web_screen_infos != web_screen_infos;
++
+   const bool window_screen_has_changed =
+       !Screen::AreWebExposedScreenPropertiesEqual(
+-          previous_original_screen_infos.current(),
+-          original_screen_infos.current());
++          previous_web_screen_infos.current(), web_screen_infos.current());
+ 
+   const bool color_gamut_changed =
+       color_space_utilities::GetColorSpaceGamut(
+-          previous_original_screen_infos.current()) !=
+-      color_space_utilities::GetColorSpaceGamut(
+-          original_screen_infos.current());
++          previous_web_screen_infos.current()) !=
++      color_space_utilities::GetColorSpaceGamut(web_screen_infos.current());
+ 
+   // Update Screens interface data before firing any events. The API is designed
+   // to offer synchronous access to the most up-to-date cached screen
+@@ -5554,27 +5574,30 @@ void WebFrameWidgetImpl::DidUpdateSurfaceAndScreen(
+   // window.screen events are fired as well.
+   ForEachLocalFrameControlledByWidget(
+       LocalRootImpl()->GetFrame(),
+-      [&original_screen_infos, window_screen_has_changed,
++      [&web_screen_infos, window_screen_has_changed, web_screen_changed,
+        color_gamut_changed](WebLocalFrameImpl* local_frame) {
+         auto* screen = local_frame->GetFrame()->DomWindow()->screen();
+-        screen->UpdateDisplayId(original_screen_infos.current().display_id);
++        screen->UpdateDisplayId(web_screen_infos.current().display_id);
+         CoreInitializer::GetInstance().DidUpdateScreens(
+-            *local_frame->GetFrame(), original_screen_infos);
++            *local_frame->GetFrame(), web_screen_infos);
+         if (window_screen_has_changed)
+           screen->DispatchEvent(*Event::Create(event_type_names::kChange));
+-        if (color_gamut_changed) {
++        if (web_screen_changed || color_gamut_changed) {
+           local_frame->GetFrame()
+               ->GetDocument()
+               ->MediaQueryAffectingValueChanged(MediaValueChange::kOther);
+         }
+       });
+ 
+-  if (previous_original_screen_infos != original_screen_infos) {
+-    // Propagate changes down to child local root RenderWidgets and
+-    // BrowserPlugins in other frame trees/processes.
++  if (previous_original_screen_infos != original_screen_infos ||
++      web_screen_changed) {
++    // Preserve physical screen metrics for child surface/input sizing and
++    // propagate web emulation separately, including clear/reset updates.
++    const auto emulated_screen_infos = GetEmulatedScreenInfos();
+     ForEachRemoteFrameControlledByWidget(
+-        [&original_screen_infos](RemoteFrame* remote_frame) {
+-          remote_frame->DidChangeScreenInfos(original_screen_infos);
++        [&original_screen_infos, &emulated_screen_infos](RemoteFrame* remote_frame) {
++          remote_frame->DidChangeScreenInfos(original_screen_infos,
++                                             emulated_screen_infos);
+         });
+   }
+ }
+diff --git a/third_party/blink/renderer/core/frame/web_frame_widget_impl.h b/third_party/blink/renderer/core/frame/web_frame_widget_impl.h
+index e74d8a7..bb814db 100644
+--- a/third_party/blink/renderer/core/frame/web_frame_widget_impl.h
++++ b/third_party/blink/renderer/core/frame/web_frame_widget_impl.h
+@@ -96,6 +96,7 @@
+ #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-shared.h"
+ #include "ui/base/mojom/menu_source_type.mojom-blink-forward.h"
+ #include "ui/base/mojom/window_show_state.mojom-blink-forward.h"
++#include "ui/display/screen_infos.h"
+ #include "ui/gfx/ca_layer_result.h"
+ 
+ namespace gfx {
+@@ -497,6 +498,8 @@ class CORE_EXPORT WebFrameWidgetImpl
+   float PageScaleInMainFrame() override;
+   const display::ScreenInfo& GetScreenInfo() override;
+   const display::ScreenInfos& GetScreenInfos() override;
++  const display::ScreenInfos& GetWebExposedScreenInfos() override;
++  std::optional<display::ScreenInfos> GetEmulatedScreenInfos();
+   const display::ScreenInfo& GetOriginalScreenInfo() override;
+   const display::ScreenInfos& GetOriginalScreenInfos() override;
+   gfx::Rect WindowRect() override;
+@@ -1317,6 +1320,10 @@ class CORE_EXPORT WebFrameWidgetImpl
+   // WidgetScreenRect, WindowScreenRect, and the widget's size.
+   Member<ScreenMetricsEmulator> device_emulator_;
+ 
++  // This state never changes WidgetBase screen/compositor/input coordinates.
++  std::optional<display::ScreenInfos> inherited_emulated_screen_infos_;
++  std::optional<display::ScreenInfos> last_web_exposed_screen_infos_;
++
+   Member<AnimationFrameTimingMonitor> animation_frame_timing_monitor_;
+ 
+   // keyPress events to be suppressed if the associated keyDown event was
+diff --git a/third_party/blink/renderer/core/frame/web_remote_frame_impl.cc b/third_party/blink/renderer/core/frame/web_remote_frame_impl.cc
+index a645bc1..48787e0 100644
+--- a/third_party/blink/renderer/core/frame/web_remote_frame_impl.cc
++++ b/third_party/blink/renderer/core/frame/web_remote_frame_impl.cc
+@@ -363,6 +363,8 @@ void WebRemoteFrameImpl::InitializeFrameVisualProperties(
+   visual_properties.is_pinch_gesture_active =
+       ancestor_widget->PinchGestureActiveInMainFrame();
+   visual_properties.screen_infos = ancestor_widget->GetOriginalScreenInfos();
++  visual_properties.emulated_screen_infos =
++      ancestor_widget->GetEmulatedScreenInfos();
+   visual_properties.visible_viewport_size =
+       ancestor_widget->VisibleViewportSize();
+   const std::vector<gfx::Rect>& viewport_segments =
+diff --git a/third_party/blink/renderer/core/page/chrome_client_impl.cc b/third_party/blink/renderer/core/page/chrome_client_impl.cc
+index 8a9acc6..23fb531 100644
+--- a/third_party/blink/renderer/core/page/chrome_client_impl.cc
++++ b/third_party/blink/renderer/core/page/chrome_client_impl.cc
+@@ -653,12 +653,12 @@ float ChromeClientImpl::WindowToViewportScalar(LocalFrame* frame,
+ 
+ const display::ScreenInfo& ChromeClientImpl::GetScreenInfo(
+     LocalFrame& frame) const {
+-  return frame.GetWidgetForLocalRoot()->GetScreenInfo();
++  return frame.GetWidgetForLocalRoot()->GetWebExposedScreenInfos().current();
+ }
+ 
+ const display::ScreenInfos& ChromeClientImpl::GetScreenInfos(
+     LocalFrame& frame) const {
+-  return frame.GetWidgetForLocalRoot()->GetScreenInfos();
++  return frame.GetWidgetForLocalRoot()->GetWebExposedScreenInfos();
+ }
+ 
+ const display::ScreenInfo& ChromeClientImpl::GetOriginalScreenInfo(
+diff --git a/third_party/blink/renderer/platform/widget/frame_widget.h b/third_party/blink/renderer/platform/widget/frame_widget.h
+index b75564d..cc2d5fa 100644
+--- a/third_party/blink/renderer/platform/widget/frame_widget.h
++++ b/third_party/blink/renderer/platform/widget/frame_widget.h
+@@ -246,6 +246,12 @@ class PLATFORM_EXPORT FrameWidget {
+   // Returns information about available screens and the current screen.
+   virtual const display::ScreenInfos& GetScreenInfos() = 0;
+ 
++  // Native Screen APIs and CSS consume this. Physical widget geometry still
++  // uses GetScreenInfos(), including when inherited OOPIF emulation is active.
++  virtual const display::ScreenInfos& GetWebExposedScreenInfos() {
++    return GetScreenInfos();
++  }
++
+   // Returns information about the screen that would be showing the widget
+   // without DevTools emulation applied.
+   virtual const display::ScreenInfo& GetOriginalScreenInfo() = 0;

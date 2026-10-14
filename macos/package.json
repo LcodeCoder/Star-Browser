@@ -2,7 +2,7 @@
   "name": "star-browser",
   "version": "0.15.1",
   "private": true,
-  "description": "Star Browser · 独立浏览环境与高频工作台",
+  "description": "Star Browser \u00b7 \u72ec\u7acb\u6d4f\u89c8\u73af\u5883\u4e0e\u9ad8\u9891\u5de5\u4f5c\u53f0",
   "main": "src/main/main.js",
   "author": "Star Browser",
   "license": "MIT",
@@ -53,7 +53,9 @@
     "test:proxy-workspace": "node tests/proxy-workspace.cjs",
     "test:batch-profiles": "node tests/batch-profiles.cjs",
     "test:editor-close": "node tests/editor-close.cjs",
-    "test:browser-newtab": "node tests/browser-newtab.cjs"
+    "test:browser-newtab": "node tests/browser-newtab.cjs",
+    "test:native-oopif:controls": "node tests/oopif-device-metrics.cjs --controls-only",
+    "test:native-oopif": "node tests/oopif-device-metrics.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",

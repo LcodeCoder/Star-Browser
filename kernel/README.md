@@ -8,6 +8,8 @@
 
 `macos/src/main/native-kernel.js` 已接入独立浏览器启动：同时设置 `STAR_NATIVE_KERNEL_EXECUTABLE` 与 `STAR_NATIVE_KERNEL_ACCEPTANCE` 才能使用通过硬件验收的发行包。验收不合格明确失败，不回退本机 Chrome；原生硬件模式不发送 CPU Emulation，也不用 RAM JS fallback 掩盖差异。屏幕策略尚未原生运行验收，不发送其参数，不扩充硬件 ABI。原生 Chromium 尚未在本机完整编译或运行验收，现有 Star 安装包仍使用 Electron 或本机 Chrome。
 
+跨进程 iframe 的屏幕/DPR 候选补丁使用独立 `emulated_screen_infos` 传递网页屏幕信息，保留物理 widget 信息用于合成和输入。它尚未通过完整编译或候选运行验收。初始化、原生 CSS、像素、点击、动态更新、清除与重启检查见 [OOPIF 验证说明](docs/oopif-validation.md)。
+
 ## 不需要完整源码的检查
 
 在仓库根目录执行：
@@ -19,7 +21,7 @@ python3 kernel/scripts/kernel.py test-policy
 python3 -m unittest discover -s kernel/tests -p 'test_*.py' -v
 ```
 
-`verify-patches` 只下载十二个固定上游文件，核对 SHA-256，在临时目录检查并应用补丁，再编译独立 C++ 策略测试。它不是完整 Chromium 编译。`test-policy` 验证硬件及屏幕参数解析、无效输入和回退规则；当前 54 个硬件、69 个屏幕独立 C++ 检查通过。
+`verify-patches` 只下载三十二个固定上游文件，核对 SHA-256，在临时目录检查并应用补丁，再编译独立 C++ 策略测试与 OOPIF 方法接口桩。接口桩检查包含 52 项实际源码方法行为和 17 项 IPC 连接；它不是完整 Chromium 编译或运行验收。`test-policy` 验证硬件及屏幕参数解析、无效输入和回退规则；当前 54 个硬件、69 个屏幕独立 C++ 检查通过。
 
 ## 升级前检查冲突
 
@@ -81,7 +83,7 @@ node tests/native-display.cjs --executable /absolute/path/to/Chromium --output t
 
 2026-10-13 本机普通 Chrome：5 项屏幕原生对照通过；把它当候选会产生 `display-rejected`（12 项失败、9 项通过）。硬件负面对照为 14 项失败、4 项通过，正确产生 `hardware-rejected`。这是验证检查能识别未实现的策略，不是定制 Chromium 已通过运行验收。日常启动仍不发送屏幕参数。
 
-GitHub Actions 增加独立 `kernel-policy` 作业，检查固定上游补丁与独立策略、Python 工具回归，并上传报告。该作业不编译或验收完整 Chromium。
+GitHub Actions 的独立 `kernel-policy` 作业检查固定上游补丁、独立策略、OOPIF 方法接口桩和 Python 工具回归，并上传报告；它不编译或验收完整 Chromium。另有手动 `Native Chromium build and acceptance` 工作流执行真正的 Windows/macOS 原生构建与逐项运行验收，上传实际阶段、日志、报告和已整理的运行包。只有对应报告通过才能认定其范围验收完成。
 
 ## 上游与许可
 

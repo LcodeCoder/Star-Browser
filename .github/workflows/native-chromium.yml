@@ -1,0 +1,75 @@
+name: Native Chromium build and acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Native host to build and validate
+        type: choice
+        options: [windows, mac, both]
+        default: windows
+permissions:
+  contents: read
+concurrency:
+  group: native-chromium-${{ github.ref }}-${{ inputs.platform }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: inputs.platform == 'windows' || inputs.platform == 'both'
+    runs-on: windows-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: macos/package-lock.json
+      - name: Install measurement tools
+        working-directory: macos
+        run: npm ci
+      - name: Build pinned native Chromium and run acceptance
+        run: python kernel/scripts/native_ci.py --root "${{ runner.temp }}/star-native" --arch x64 --jobs 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-chromium-windows-reports
+          path: macos/test-results/native-build/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-chromium-windows-runtime
+          path: ${{ runner.temp }}/star-native/runtime/
+          if-no-files-found: ignore
+  mac:
+    if: inputs.platform == 'mac' || inputs.platform == 'both'
+    runs-on: macos-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: macos/package-lock.json
+      - name: Install measurement tools
+        working-directory: macos
+        run: npm ci
+      - name: Preserve active Xcode and build pinned native Chromium
+        run: python3 kernel/scripts/native_ci.py --root "${{ runner.temp }}/star-native" --arch arm64 --jobs 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-chromium-mac-reports
+          path: macos/test-results/native-build/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-chromium-mac-runtime
+          path: ${{ runner.temp }}/star-native/runtime/
+          if-no-files-found: ignore

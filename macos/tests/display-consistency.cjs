@@ -79,13 +79,13 @@ function verify(values, dpr, {first = true, events = false} = {}) {
   for (const [scope, entry] of Object.entries(values)) {
     for (const [phase, sample] of [['now', entry.now], ...(first ? [['first', entry.first]] : [])]) {
       const label = scope + ' ' + phase;
-      if (phase === 'now') assert.deepEqual(sample.screen, reference.screen, label + ' independently measured current display');
-      else {
-        for (const key of ['width','height','colorDepth','pixelDepth']) assert.equal(sample.screen[key], reference.initialScreen[key], label + ' native ' + key);
-        // The OS work area can change between document creation and later checks.
-        assert.ok(sample.screen.availWidth > 0 && sample.screen.availWidth <= sample.screen.width);
-        assert.ok(sample.screen.availHeight > 0 && sample.screen.availHeight <= sample.screen.height);
-      }
+      const expectedScreen = phase === 'now' ? reference.screen : reference.initialScreen;
+      for (const key of ['width','height','colorDepth','pixelDepth']) assert.equal(sample.screen[key], expectedScreen[key], label + ' independently measured native ' + key);
+      // macOS can animate its Dock/work area between two independent reads.
+      // This mode preserves native work-area getters; validate their bounds
+      // without requiring an atomic OS snapshot across separate processes.
+      assert.ok(sample.screen.availWidth > 0 && sample.screen.availWidth <= sample.screen.width);
+      assert.ok(sample.screen.availHeight > 0 && sample.screen.availHeight <= sample.screen.height);
       assert.ok(Math.abs(sample.dpr - (phase === 'first' ? reference.dpr : dpr)) < 0.000001, label + ' DPR: ' + sample.dpr + ' vs ' + dpr);
       assert.equal(sample.identity, true, label + ' original getter identity');
       assert.deepEqual(sample.descriptors, reference.control[scope].now.descriptors, label + ' native screen getter semantics');
